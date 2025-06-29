@@ -70,8 +70,13 @@ class DeepResearchClient:
         self.client = OpenAI(api_key=self.api_key, timeout=settings.openai.timeout)
         self.async_client = AsyncOpenAI(api_key=self.api_key, timeout=settings.openai.timeout)
         
-        self.comprehensive_model = "o1-pro"  # For deep, comprehensive research
-        self.fast_model = "o1-mini"  # For quicker research tasks
+        # Use correct Deep Research models from OpenAI documentation
+        self.comprehensive_model = "o3"          # For deep, comprehensive research  
+        self.fast_model = "o4-mini"              # For quicker research tasks
+        
+        # Fallback to GPT-4 models if Deep Research models aren't available
+        self.fallback_comprehensive = "gpt-4o"
+        self.fallback_fast = "gpt-4o-mini"
         
     def _parse_research_response(self, response: Any, model: str) -> DeepResearchResponse:
         """Parse OpenAI response into structured format"""
@@ -87,17 +92,24 @@ class DeepResearchClient:
             citations = []
             research_steps = []
             
-            # For now, we'll extract basic information
-            # The exact response format may vary based on OpenAI's implementation
+            # Convert usage object to dictionary if needed
+            usage_dict = None
+            if hasattr(response, 'usage') and response.usage:
+                usage_obj = response.usage
+                usage_dict = {
+                    "prompt_tokens": getattr(usage_obj, 'prompt_tokens', 0),
+                    "completion_tokens": getattr(usage_obj, 'completion_tokens', 0),
+                    "total_tokens": getattr(usage_obj, 'total_tokens', 0)
+                }
             
             return DeepResearchResponse(
                 id=getattr(response, 'id', str(uuid.uuid4())),
-                content=content,
+                content=content or "No content received",
                 citations=citations,
                 research_steps=research_steps,
                 timestamp=datetime.now(),
                 model=model,
-                usage=getattr(response, 'usage', None),
+                usage=usage_dict,
                 cost_estimate=self._estimate_cost(response, model)
             )
             
@@ -110,24 +122,31 @@ class DeepResearchClient:
         try:
             if hasattr(response, 'usage') and response.usage:
                 # These are estimated rates - actual rates may vary
-                if model == "o1-pro":
-                    input_rate = 0.015  # per 1K tokens
-                    output_rate = 0.060  # per 1K tokens
-                else:  # o1-mini
-                    input_rate = 0.003  # per 1K tokens
-                    output_rate = 0.012  # per 1K tokens
+                if model == "o3":
+                    input_rate = 0.015  # per 1K tokens (estimated for o3)
+                    output_rate = 0.060  # per 1K tokens (estimated for o3)
+                elif model == "o4-mini":
+                    input_rate = 0.003  # per 1K tokens (estimated for o4-mini)
+                    output_rate = 0.012  # per 1K tokens (estimated for o4-mini)
+                elif model == "gpt-4o":
+                    input_rate = 0.0025  # per 1K tokens
+                    output_rate = 0.01   # per 1K tokens
+                else:  # gpt-4o-mini fallback
+                    input_rate = 0.00015  # per 1K tokens
+                    output_rate = 0.0006   # per 1K tokens
                 
-                input_tokens = getattr(response.usage, 'prompt_tokens', 0)
-                output_tokens = getattr(response.usage, 'completion_tokens', 0)
+                usage = response.usage
+                input_tokens = getattr(usage, 'prompt_tokens', 0)
+                output_tokens = getattr(usage, 'completion_tokens', 0)
                 
                 cost = (input_tokens / 1000 * input_rate) + (output_tokens / 1000 * output_rate)
                 return round(cost, 4)
                 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not calculate cost: {e}")
         
         # Fallback estimate for deep research
-        return 0.50 if model == "o1-pro" else 0.10
+        return 0.50 if model == "o3" else 0.10
     
     async def research_topic(self, 
                            query: str, 
@@ -147,35 +166,60 @@ class DeepResearchClient:
         
         try:
             # Choose model based on depth
-            model = self.comprehensive_model if depth == "comprehensive" else self.fast_model
+            primary_model = self.comprehensive_model if depth == "comprehensive" else self.fast_model
+            fallback_model = self.fallback_comprehensive if depth == "comprehensive" else self.fallback_fast
             
             # Construct research prompt
             prompt = self._build_research_prompt(query, context, domain)
             
             logger.info(f"Starting deep research: {query[:100]}...")
             
-            # Make API call
-            response = await self.async_client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1  # Lower temperature for more focused research
-            )
+            # Try primary model first, then fallback
+            model_used = primary_model
+            try:
+                # Prepare request parameters
+                request_params = {
+                    "model": primary_model,
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+                
+                # Only add temperature for models that support it (not o3/o4-mini)
+                if primary_model not in ["o3", "o4-mini"]:
+                    request_params["temperature"] = 0.1
+                
+                # Add max_completion_tokens for o3/o4-mini models if needed
+                # (These models have different parameter requirements)
+                
+                response = await self.async_client.chat.completions.create(**request_params)
+                
+            except Exception as primary_error:
+                logger.warning(f"Primary model {primary_model} failed, trying fallback: {primary_error}")
+                model_used = fallback_model
+                
+                fallback_params = {
+                    "model": fallback_model,
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+                
+                # Only add temperature for models that support it
+                if fallback_model not in ["o3", "o4-mini"]:
+                    fallback_params["temperature"] = 0.1
+                
+                response = await self.async_client.chat.completions.create(**fallback_params)
             
             # Parse response
-            research_response = self._parse_research_response(response, model)
+            research_response = self._parse_research_response(response, model_used)
             
             # Log metrics
             duration = (datetime.now() - start_time).total_seconds()
-            log_api_call("OpenAI Deep Research", model, {"query": query[:100]}, duration)
+            log_api_call("OpenAI Deep Research", model_used, {"query": query[:100]}, duration)
             log_cost(domain or "unknown", "deep_research", research_response.cost_estimate or 0)
             
-            logger.info(f"Research completed in {duration:.2f}s")
+            logger.info(f"Research completed in {duration:.2f}s using {model_used}")
             return research_response
             
         except Exception as e:
-            log_error(e, {"query": query, "model": model})
+            log_error(e, {"query": query, "model": "unknown"})
             raise DeepResearchError(f"Research failed: {e}")
     
     def _build_research_prompt(self, 

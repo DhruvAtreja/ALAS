@@ -15,8 +15,8 @@ load_dotenv()
 class OpenAIConfig(BaseSettings):
     """OpenAI API configuration"""
     api_key: str = Field(..., env="OPENAI_API_KEY")
-    deep_research_model: str = Field(default="o1-pro", env="OPENAI_DEEP_RESEARCH_MODEL")
-    deep_research_mini_model: str = Field(default="o1-mini", env="OPENAI_DEEP_RESEARCH_MINI_MODEL")
+    deep_research_model: str = Field(default="o3", env="OPENAI_DEEP_RESEARCH_MODEL")
+    deep_research_mini_model: str = Field(default="o4-mini", env="OPENAI_DEEP_RESEARCH_MINI_MODEL")
     fine_tuning_model: str = Field(default="gpt-4o-2024-08-06", env="OPENAI_FINE_TUNING_MODEL")
     timeout: int = Field(default=3600, env="OPENAI_TIMEOUT")  # 1 hour for deep research
     max_concurrent_requests: int = Field(default=5, env="OPENAI_MAX_CONCURRENT")
