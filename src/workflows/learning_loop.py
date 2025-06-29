@@ -10,6 +10,7 @@ import uuid
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 
 try:
     from ..workflows.state_management import (
@@ -288,12 +289,15 @@ class SelfLearningWorkflow:
             logger.info("Learning objectives achieved or limits reached")
             return "complete"
             
-    async def run(self, domain: str, config: Optional[Dict[str, Any]] = None) -> LearningAgentState:
+    async def run(self, domain: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Execute the learning workflow for a domain"""
         if not self.graph:
             self.compile()
             
-        # Initialize state
+        if not self.graph:
+            raise RuntimeError("Failed to compile workflow graph")
+            
+        # Initialize state - will be populated by initialization_node
         initial_state = {
             "domain": domain,
             "messages": [],
@@ -301,13 +305,13 @@ class SelfLearningWorkflow:
         }
         
         # Run the graph
-        config = {"configurable": {"thread_id": domain}}
+        thread_config: RunnableConfig = {"configurable": {"thread_id": domain}}
         
-        async for event in self.graph.astream(initial_state, config):
+        async for event in self.graph.astream(initial_state, thread_config):  # type: ignore
             logger.debug(f"Event: {event}")
             
         # Get final state
-        final_state = await self.graph.aget_state(config)
+        final_state = await self.graph.aget_state(thread_config)
         return final_state.values
 
 

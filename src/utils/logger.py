@@ -4,6 +4,7 @@ Logging configuration for ALAS
 
 import sys
 from pathlib import Path
+from typing import Optional
 from loguru import logger
 
 try:
@@ -118,7 +119,7 @@ def log_iteration_complete(domain: str, iteration: int, metrics: dict):
     )
 
 
-def log_error(error: Exception, context: dict = None):
+def log_error(error: Exception, context: Optional[dict] = None):
     """Log an error with context"""
     logger.error(
         f"Error: {str(error)}",

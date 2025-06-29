@@ -264,8 +264,8 @@ class DeepResearchClient:
     
     async def generate_curriculum(self, 
                                 domain: str, 
-                                current_topics: List[str] = None,
-                                learning_goals: List[str] = None) -> Dict[str, Any]:
+                                current_topics: Optional[List[str]] = None,
+                                learning_goals: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Generate a learning curriculum for a domain using deep research
         

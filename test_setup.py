@@ -12,12 +12,12 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 try:
     # Test imports
     print("Testing imports...")
-    from config.settings import settings
-    from workflows.state_management import LearningAgentState, Topic
-    from workflows.learning_loop import create_learning_workflow
-    from utils.logger import get_logger
-    from core.deep_research_client import create_deep_research_client
-    from core.curriculum_generator import create_curriculum_generator
+    from src.config.settings import settings
+    from src.workflows.state_management import LearningAgentState, Topic
+    from src.workflows.learning_loop import create_learning_workflow
+    from src.utils.logger import get_logger
+    from src.core.deep_research_client import create_deep_research_client
+    from src.core.curriculum_generator import create_curriculum_generator
     
     print("✓ All imports successful")
     
@@ -41,8 +41,11 @@ try:
     
     # Test graph visualization
     print("\nWorkflow graph structure:")
-    print(f"  Nodes: {list(workflow.graph.nodes)}")
-    print(f"  Entry point: initialization")
+    if workflow.graph:
+        print(f"  Nodes: {list(workflow.graph.nodes)}")
+        print(f"  Entry point: initialization")
+    else:
+        print("  Graph not compiled")
     
     # Test basic state creation
     print("\nTesting state creation...")

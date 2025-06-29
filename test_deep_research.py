@@ -10,9 +10,9 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from core.deep_research_client import create_deep_research_client, DeepResearchError
-from config.settings import settings
-from utils.logger import get_logger
+from src.core.deep_research_client import create_deep_research_client, DeepResearchError
+from src.config.settings import settings
+from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -91,9 +91,9 @@ async def test_model_availability():
                 
                 # Use correct token parameter for different models
                 if model in ["o3", "o4-mini"]:
-                    params["max_completion_tokens"] = 1000000
+                    params["max_completion_tokens"] = 100000
                 else:
-                    params["max_tokens"] = 1000000
+                    params["max_tokens"] = 16384
                 
                 response = await client.chat.completions.create(**params)
                 print("✅ Available")

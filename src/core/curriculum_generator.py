@@ -34,7 +34,7 @@ class CurriculumGenerator:
     async def generate_initial_curriculum(self, 
                                         domain: str,
                                         learning_goals: Optional[List[str]] = None,
-                                        breadth_topics: int = None) -> List[Topic]:
+                                        breadth_topics: Optional[int] = None) -> List[Topic]:
         """
         Generate initial breadth-first curriculum for a domain
         

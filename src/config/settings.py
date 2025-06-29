@@ -14,12 +14,12 @@ load_dotenv()
 
 class OpenAIConfig(BaseSettings):
     """OpenAI API configuration"""
-    api_key: str = Field(..., env="OPENAI_API_KEY")
-    deep_research_model: str = Field(default="o3", env="OPENAI_DEEP_RESEARCH_MODEL")
-    deep_research_mini_model: str = Field(default="o4-mini", env="OPENAI_DEEP_RESEARCH_MINI_MODEL")
-    fine_tuning_model: str = Field(default="gpt-4o-2024-08-06", env="OPENAI_FINE_TUNING_MODEL")
-    timeout: int = Field(default=3600, env="OPENAI_TIMEOUT")  # 1 hour for deep research
-    max_concurrent_requests: int = Field(default=5, env="OPENAI_MAX_CONCURRENT")
+    api_key: str = ""
+    deep_research_model: str = "o3"
+    deep_research_mini_model: str = "o4-mini"
+    fine_tuning_model: str = "gpt-4o-2024-08-06"
+    timeout: int = 3600  # 1 hour for deep research
+    max_concurrent_requests: int = 5
     
     class Config:
         env_prefix = "OPENAI_"
@@ -27,9 +27,9 @@ class OpenAIConfig(BaseSettings):
 
 class LangSmithConfig(BaseSettings):
     """LangSmith monitoring configuration"""
-    api_key: str = Field(..., env="LANGCHAIN_API_KEY")
-    project: str = Field(default="self-learning-agent", env="LANGCHAIN_PROJECT")
-    tracing_v2: bool = Field(default=True, env="LANGCHAIN_TRACING_V2")
+    api_key: str = ""
+    project: str = "self-learning-agent"
+    tracing_v2: bool = True
     
     class Config:
         env_prefix = "LANGCHAIN_"
@@ -37,7 +37,7 @@ class LangSmithConfig(BaseSettings):
 
 class ExaConfig(BaseSettings):
     """Exa Search API configuration"""
-    api_key: str = Field(..., env="EXA_API_KEY")
+    api_key: str = ""
     
     class Config:
         env_prefix = "EXA_"
@@ -45,9 +45,9 @@ class ExaConfig(BaseSettings):
 
 class RedisConfig(BaseSettings):
     """Redis configuration for state persistence"""
-    host: str = Field(default="localhost", env="REDIS_HOST")
-    port: int = Field(default=6379, env="REDIS_PORT")
-    password: Optional[str] = Field(default=None, env="REDIS_PASSWORD")
+    host: str = "localhost"
+    port: int = 6379
+    password: Optional[str] = None
     
     @property
     def url(self) -> str:
@@ -61,9 +61,9 @@ class RedisConfig(BaseSettings):
 
 class CostControlConfig(BaseSettings):
     """Cost control and budget configuration"""
-    max_budget_per_domain: float = Field(default=2000.0, env="MAX_BUDGET_PER_DOMAIN")
-    cost_per_deep_research: float = Field(default=50.0, env="COST_PER_DEEP_RESEARCH")
-    cost_per_fine_tuning: float = Field(default=100.0, env="COST_PER_FINE_TUNING")
+    max_budget_per_domain: float = 2000.0
+    cost_per_deep_research: float = 50.0
+    cost_per_fine_tuning: float = 100.0
     
     class Config:
         env_prefix = ""
@@ -71,12 +71,12 @@ class CostControlConfig(BaseSettings):
 
 class LearningConfig(BaseSettings):
     """Learning algorithm configuration"""
-    initial_topics_breadth: int = Field(default=10, env="INITIAL_TOPICS_BREADTH")
-    topics_per_iteration: int = Field(default=5, env="TOPICS_PER_ITERATION")
-    evaluation_threshold: float = Field(default=0.7, env="EVALUATION_THRESHOLD")
-    mastery_threshold: float = Field(default=0.85, env="MASTERY_THRESHOLD")
-    max_iterations: int = Field(default=20, env="MAX_ITERATIONS")
-    min_training_examples_per_topic: int = Field(default=20, env="MIN_TRAINING_EXAMPLES")
+    initial_topics_breadth: int = 10
+    topics_per_iteration: int = 5
+    evaluation_threshold: float = 0.7
+    mastery_threshold: float = 0.85
+    max_iterations: int = 20
+    min_training_examples_per_topic: int = 20
     
     class Config:
         env_prefix = "LEARNING_"
@@ -85,18 +85,18 @@ class LearningConfig(BaseSettings):
 class Settings(BaseSettings):
     """Main settings class combining all configurations"""
     
-    # Sub-configurations
-    openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
-    langsmith: LangSmithConfig = Field(default_factory=LangSmithConfig)
-    exa: ExaConfig = Field(default_factory=ExaConfig)
-    redis: RedisConfig = Field(default_factory=RedisConfig)
-    cost_control: CostControlConfig = Field(default_factory=CostControlConfig)
-    learning: LearningConfig = Field(default_factory=LearningConfig)
+    # Sub-configurations  
+    openai: OpenAIConfig = Field(default_factory=lambda: OpenAIConfig())
+    langsmith: LangSmithConfig = Field(default_factory=lambda: LangSmithConfig())
+    exa: ExaConfig = Field(default_factory=lambda: ExaConfig())
+    redis: RedisConfig = Field(default_factory=lambda: RedisConfig())
+    cost_control: CostControlConfig = Field(default_factory=lambda: CostControlConfig())
+    learning: LearningConfig = Field(default_factory=lambda: LearningConfig())
     
     # General settings
-    environment: str = Field(default="development", env="ENVIRONMENT")
-    webhook_base_url: Optional[str] = Field(default=None, env="WEBHOOK_BASE_URL")
-    log_level: str = Field(default="INFO", env="LOG_LEVEL")
+    environment: str = "development"
+    webhook_base_url: Optional[str] = None
+    log_level: str = "INFO"
     
     @validator("environment")
     def validate_environment(cls, v):
