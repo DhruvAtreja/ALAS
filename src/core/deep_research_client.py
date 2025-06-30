@@ -274,19 +274,17 @@ class DeepResearchClient:
             f"Create a comprehensive learning curriculum for the domain: <domain>{domain}</domain>",
             "",
             "Generate a structured curriculum as a list of topics and a quick summary of the topic with the following characteristics:",
-            "1. Breadth-first coverage of fundamental topics",
-            "2. Progressive depth increase based on prerequisites",
-            "3. Clear learning objectives for each topic",
-            "4. Estimated difficulty levels (easy/medium/hard)",
-            "5. Topic relationships and dependencies",
-            "6. You must make at least 20 topics.",
-            "7. You must make sure the user has a good understanding of the domain. The topics must not be too broad. You can create as many topics as needed. You can also add topics which are inter-related, but in this case, you must include in their summaries how these topics are related.",
+            "1. Coverage of fundamental topics",
+            "2. Clear learning objectives for each topic",
+            "3. Estimated difficulty levels (easy/medium/hard)",
+            "4. You must make at least 10 topics.",
+            "5. You must make sure the user has a good understanding of the domain. The topics must not be too broad. You can create as many topics as needed. You can also add topics which are inter-related, but in this case, you must include in their summaries how these topics are related.",
         ]
         if current_topics:
             prompt_parts.extend([
                 "Already covered topics by the user:",
                 *[f"- <topic>{topic}</topic>" for topic in current_topics],
-                "You can create new topics which add progressive depth to these topics.",
+                "You can create new topics which add depth to these topics.",
                 ""
             ])
         
