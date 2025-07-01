@@ -127,8 +127,8 @@ class DeepResearchClient:
         self.fast_model = "o4-mini"              # For quicker research tasks
         
         # Fallback to GPT-4 models if Deep Research models aren't available
-        self.fallback_comprehensive = "gpt-4o"
-        self.fallback_fast = "gpt-4o-mini"
+        self.fallback_comprehensive = "gpt-4.1-2025-04-14"
+        self.fallback_fast = "gpt-4.1-2025-04-14"
 
     def _estimate_cost(self, response: Any, model: str) -> float:
         """Estimate cost based on token usage"""

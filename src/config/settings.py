@@ -17,7 +17,7 @@ class OpenAIConfig(BaseSettings):
     api_key: str = ""
     deep_research_model: str = "o3"
     deep_research_mini_model: str = "o4-mini"
-    fine_tuning_model: str = "gpt-4o-2024-08-06"
+    fine_tuning_model: str = "gpt-4.1-2025-04-14"
     timeout: int = 3600  # 1 hour for deep research
     max_concurrent_requests: int = 5
     
