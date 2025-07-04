@@ -9,6 +9,7 @@ import sys
 import json
 from typing import Optional
 from pathlib import Path
+from datetime import datetime
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -17,6 +18,87 @@ from src.core.fine_tuner import create_fine_tuner, FineTuningHyperparameters, Fi
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+async def auto_run_evaluation(fine_tuned_model: str, training_file: str) -> bool:
+    """Automatically run evaluation on the fine-tuned model"""
+    try:
+        # Convert JSONL training file to JSON evaluation file
+        training_path = Path(training_file)
+        json_file = training_path.with_suffix('.json')
+        
+        # Check if corresponding JSON file exists
+        if not json_file.exists():
+            # Look for any JSON file with similar name
+            pattern = training_path.stem.replace('_openai', '')
+            json_files = list(training_path.parent.glob(f"{pattern}*.json"))
+            
+            if json_files:
+                json_file = json_files[0]
+            else:
+                print(f"\n⚠️  No evaluation data found for {training_file}")
+                print("To run evaluation manually:")
+                print(f"python run_evaluation.py <evaluation_data.json> --model {fine_tuned_model}")
+                return False
+        
+        print(f"\n🧪 Running automatic evaluation...")
+        print(f"📁 Evaluation data: {json_file}")
+        print(f"🤖 Model: {fine_tuned_model}")
+        
+        # Import and run evaluation
+        import subprocess
+        import os
+        
+        # Create output filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = f"evaluation_results_finetuned_{timestamp}.json"
+        
+        # Run evaluation as subprocess
+        cmd = [
+            sys.executable, "run_evaluation.py",
+            str(json_file),
+            "--model", fine_tuned_model,
+            "--output", output_file,
+            "--concurrent", "2"  # Conservative concurrency
+        ]
+        
+        print(f"Running: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            print(f"✅ Evaluation completed successfully!")
+            print(f"📊 Results saved to: {output_file}")
+            
+            # Try to show quick summary
+            try:
+                with open(output_file, 'r') as f:
+                    eval_results = json.load(f)
+                    
+                if 'evaluation_summary' in eval_results:
+                    summary = eval_results['evaluation_summary']
+                    total = summary.get('total_questions', 0)
+                    correct = summary.get('total_correct', 0)
+                    accuracy = (correct / total * 100) if total > 0 else 0
+                    
+                    print(f"🎯 Quick Results: {correct}/{total} correct ({accuracy:.1f}%)")
+                    
+            except Exception as e:
+                logger.debug(f"Could not parse evaluation results: {e}")
+            
+            print(f"\n💡 Compare with base model:")
+            print(f"python compare_model_performance.py <base_results.json> {output_file}")
+            
+            return True
+        else:
+            print(f"❌ Evaluation failed:")
+            print(result.stderr)
+            return False
+            
+    except Exception as e:
+        print(f"❌ Auto-evaluation error: {e}")
+        print(f"💡 Run evaluation manually:")
+        print(f"python run_evaluation.py <evaluation_data.json> --model {fine_tuned_model}")
+        return False
 
 
 def validate_training_file(file_path: str) -> bool:
@@ -118,6 +200,9 @@ async def run_fine_tuning(
             print(f"\n🎉 Fine-tuning successful!")
             print(f"Fine-tuned model ID: {result.fine_tuned_model}")
             print(f"You can now use this model in your applications.")
+            
+            # Auto-run evaluation if training data exists
+            await auto_run_evaluation(result.fine_tuned_model, training_file)
         else:
             logger.info(f"⏳ Job still in progress. Job ID: {result.job_id}")
             print(f"\n⏳ Fine-tuning job created: {result.job_id}")
