@@ -9,6 +9,7 @@ import re
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 import uuid
+from pathlib import Path
 
 from openai import OpenAI, AsyncOpenAI
 from pydantic import BaseModel, Field
@@ -111,6 +112,22 @@ class Curriculum(BaseModel):
     metadata: CurriculumMetadata = Field(..., description="Curriculum metadata")
 
 
+class LearnedTopic(BaseModel):
+    """Represents a topic that has been learned/mastered"""
+    topic_name: str = Field(..., description="Name of the learned topic")
+    learned_date: str = Field(..., description="ISO timestamp when topic was mastered")
+    accuracy: float = Field(..., ge=0.0, le=1.0, description="Accuracy achieved on this topic")
+    iteration: int = Field(..., ge=1, description="Learning iteration when mastered")
+
+
+class LearnedTopicsHistory(BaseModel):
+    """Historical record of all learned topics"""
+    domain: str = Field(..., description="The learning domain")
+    learned_topics: List[LearnedTopic] = Field(default_factory=list, description="List of all learned topics")
+    last_updated: str = Field(..., description="ISO timestamp of last update")
+    total_topics_learned: int = Field(default=0, description="Total count of learned topics")
+
+
 class CurriculumRevisionRequest(BaseModel):
     """Request for curriculum revision based on evaluation results"""
     domain: str = Field(..., description="The learning domain")
@@ -149,6 +166,9 @@ class DeepResearchClient:
         # Fallback to GPT-4 models if Deep Research models aren't available
         self.fallback_comprehensive = "gpt-4.1-2025-04-14"
         self.fallback_fast = "gpt-4.1-2025-04-14"
+        
+        # Path for learned topics history
+        self.learned_topics_file = Path("learned_topics.json")
 
     def _estimate_cost(self, response: Any, model: str) -> float:
         """Estimate cost based on token usage"""
@@ -180,6 +200,91 @@ class DeepResearchClient:
         
         # Fallback estimate for deep research
         return 0.50 if model == "o3" else 0.10
+
+    def save_learned_topics(self, domain: str, mastered_topics: List[str], accuracy_scores: Dict[str, float], iteration: int) -> None:
+        """Save newly mastered topics to the learned topics history file"""
+        try:
+            current_time = datetime.now().isoformat()
+            
+            # Load existing history or create new
+            history = self.load_learned_topics_history(domain)
+            
+            # Add new learned topics
+            for topic_name in mastered_topics:
+                accuracy = accuracy_scores.get(topic_name, 1.0)  # Default to 1.0 if not found
+                
+                # Check if topic is already in history (avoid duplicates)
+                existing_topic = next(
+                    (lt for lt in history.learned_topics if lt.topic_name == topic_name), 
+                    None
+                )
+                
+                if not existing_topic:
+                    learned_topic = LearnedTopic(
+                        topic_name=topic_name,
+                        learned_date=current_time,
+                        accuracy=accuracy,
+                        iteration=iteration
+                    )
+                    history.learned_topics.append(learned_topic)
+                    logger.info(f"Added learned topic: {topic_name} (accuracy: {accuracy:.1%})")
+                else:
+                    # Update existing topic if accuracy improved
+                    if accuracy > existing_topic.accuracy:
+                        existing_topic.accuracy = accuracy
+                        existing_topic.learned_date = current_time
+                        existing_topic.iteration = iteration
+                        logger.info(f"Updated learned topic: {topic_name} (new accuracy: {accuracy:.1%})")
+            
+            # Update metadata
+            history.last_updated = current_time
+            history.total_topics_learned = len(history.learned_topics)
+            
+            # Save to file
+            with open(self.learned_topics_file, 'w', encoding='utf-8') as f:
+                json.dump(history.model_dump(), f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Saved {len(mastered_topics)} learned topics to {self.learned_topics_file}")
+            logger.info(f"Total topics learned so far: {history.total_topics_learned}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save learned topics: {e}")
+
+    def load_learned_topics_history(self, domain: str) -> LearnedTopicsHistory:
+        """Load the learned topics history from file"""
+        try:
+            if self.learned_topics_file.exists():
+                with open(self.learned_topics_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                # Validate domain matches
+                if data.get("domain") == domain:
+                    return LearnedTopicsHistory(**data)
+                else:
+                    logger.warning(f"Domain mismatch in learned topics file. Expected: {domain}, Found: {data.get('domain')}")
+                    # Create new history for different domain
+                    return self._create_new_learned_topics_history(domain)
+            else:
+                logger.info(f"No learned topics history found, creating new file")
+                return self._create_new_learned_topics_history(domain)
+                
+        except Exception as e:
+            logger.error(f"Failed to load learned topics history: {e}")
+            return self._create_new_learned_topics_history(domain)
+    
+    def _create_new_learned_topics_history(self, domain: str) -> LearnedTopicsHistory:
+        """Create a new learned topics history"""
+        return LearnedTopicsHistory(
+            domain=domain,
+            learned_topics=[],
+            last_updated=datetime.now().isoformat(),
+            total_topics_learned=0
+        )
+    
+    def get_all_learned_topic_names(self, domain: str) -> List[str]:
+        """Get a list of all historically learned topic names"""
+        history = self.load_learned_topics_history(domain)
+        return [topic.topic_name for topic in history.learned_topics]
     
     async def research_topic(self, 
                            query: str, 
@@ -586,7 +691,8 @@ class DeepResearchClient:
     async def generate_revised_curriculum_from_evaluation(self, 
                                                         evaluation_results: Dict[str, Any],
                                                         current_curriculum: Optional[Curriculum] = None,
-                                                        accuracy_threshold: float = 0.9) -> Optional[CurriculumRevisionResult]:
+                                                        accuracy_threshold: float = 0.9,
+                                                        iteration: int = 1) -> Optional[CurriculumRevisionResult]:
         """
         Generate revised curriculum based on DPO evaluation results
         
@@ -594,6 +700,7 @@ class DeepResearchClient:
             evaluation_results: DPO evaluation results in expected format
             current_curriculum: Optional current curriculum for context
             accuracy_threshold: Threshold for determining mastery (default 0.9 for 90%)
+            iteration: Current learning iteration number
         
         Returns:
             CurriculumRevisionResult containing revised curriculum and analysis
@@ -609,10 +716,12 @@ class DeepResearchClient:
             mastered_topics = []
             failed_topics = []
             failed_questions = []
+            accuracy_scores = {}
             
             for topic_result in topic_results:
                 topic_name = topic_result.get("topic_name", "Unknown Topic")
                 topic_accuracy = topic_result.get("accuracy", 0.0)
+                accuracy_scores[topic_name] = topic_accuracy
                 
                 if topic_accuracy >= accuracy_threshold:
                     mastered_topics.append(topic_name)
@@ -623,15 +732,23 @@ class DeepResearchClient:
                     topic_failed_questions = self._extract_failed_questions(topic_result)
                     failed_questions.extend(topic_failed_questions)
             
+            # Save newly mastered topics to learned topics history
+            if mastered_topics:
+                self.save_learned_topics(domain, mastered_topics, accuracy_scores, iteration)
+            
+            # Load all historical learned topics
+            all_learned_topics = self.get_all_learned_topic_names(domain)
+            
             # Limit failed questions to maximum 100 as requested
             if len(failed_questions) > 100:
                 failed_questions = failed_questions[:100]
                 logger.warning(f"Truncated failed questions to 100 (originally {len(failed_questions)})")
             
-            # Generate curriculum revision prompt
+            # Generate curriculum revision prompt (including historical learned topics)
             revision_prompt = self._build_curriculum_revision_prompt(
                 domain=domain,
                 mastered_topics=mastered_topics,
+                all_learned_topics=all_learned_topics,  # Include all historical topics
                 failed_topics=failed_topics,
                 failed_questions=failed_questions,
                 overall_accuracy=overall_accuracy,
@@ -640,7 +757,8 @@ class DeepResearchClient:
             
             # Call deep research API
             logger.info(f"Generating revised curriculum for domain: {domain}")
-            logger.info(f"Mastered topics: {len(mastered_topics)}, Failed topics: {len(failed_topics)}")
+            logger.info(f"Current mastered topics: {len(mastered_topics)}, Failed topics: {len(failed_topics)}")
+            logger.info(f"Total historical learned topics: {len(all_learned_topics)}")
             logger.info(f"Failed questions to analyze: {len(failed_questions)}")
             
             response = await self.research_topic(
@@ -655,6 +773,7 @@ class DeepResearchClient:
             # Create revision summary
             revision_summary = self._create_revision_summary(
                 mastered_topics=mastered_topics,
+                all_learned_topics=all_learned_topics,
                 failed_topics=failed_topics,
                 failed_questions_count=len(failed_questions),
                 overall_accuracy=overall_accuracy
@@ -697,6 +816,7 @@ class DeepResearchClient:
     def _build_curriculum_revision_prompt(self,
                                         domain: str,
                                         mastered_topics: List[str],
+                                        all_learned_topics: List[str],
                                         failed_topics: List[str],
                                         failed_questions: List[Dict[str, Any]],
                                         overall_accuracy: float,
@@ -708,18 +828,29 @@ class DeepResearchClient:
             "",
             "## Current Learning Status:",
             f"- Overall accuracy: {overall_accuracy:.1%}",
-            f"- Topics mastered (>90% accuracy): {len(mastered_topics)}",
+            f"- Topics mastered in this iteration: {len(mastered_topics)}",
             f"- Topics needing improvement: {len(failed_topics)}",
             f"- Failed questions analyzed: {len(failed_questions)}",
             ""
         ]
         
-        # Add mastered topics
+        # Add ALL historical learned topics
+        if all_learned_topics:
+            prompt_parts.extend([
+                "## ALL Topics Learned Throughout History:",
+                "The learner has demonstrated proficiency in these topics across all learning iterations:",
+                *[f"- <learned_topic>{topic}</learned_topic>" for topic in all_learned_topics],
+                "",
+                "**Important**: Do not include these topics in the new curriculum as they have already been mastered.",
+                ""
+            ])
+        
+        # Add current iteration mastered topics (subset of historical)
         if mastered_topics:
             prompt_parts.extend([
-                "## Topics Already Mastered (>90% accuracy):",
-                "The learner has demonstrated proficiency in these topics:",
-                *[f"- <mastered_topic>{topic}</mastered_topic>" for topic in mastered_topics],
+                "## Topics Mastered in Current Iteration:",
+                "These topics were just mastered in the most recent evaluation:",
+                *[f"- <current_mastered_topic>{topic}</current_mastered_topic>" for topic in mastered_topics],
                 ""
             ])
         
@@ -770,15 +901,17 @@ class DeepResearchClient:
             "",
             "Based on the learning performance analysis above, create a comprehensive revised curriculum that:",
             "",
-            "1. **Reinforces Failed Topics**: For topics where the learner struggled, create focused sub-topics that address the specific knowledge gaps revealed by the failed questions.",
+            "1. **Avoids All Previously Learned Topics**: Do NOT include any topics from the historical learned topics list above.",
             "",
-            "2. **Addresses Specific Mistakes**: Design topics that directly address the misunderstandings shown in the failed questions above.",
+            "2. **Reinforces Failed Topics**: For topics where the learner struggled, create focused sub-topics that address the specific knowledge gaps revealed by the failed questions.",
             "",
-            "3. **Builds on Mastered Topics**: Since the learner has mastered certain topics, create more advanced topics that build upon that foundation.",
+            "3. **Addresses Specific Mistakes**: Design topics that directly address the misunderstandings shown in the failed questions above.",
             "",
-            "4. **Expands Domain Knowledge**: Include new topics that represent the next logical progression in learning this domain.",
+            "4. **Builds on Historical Knowledge**: Since the learner has mastered many topics over time, create more advanced topics that build upon that accumulated foundation.",
             "",
-            "5. **Maintains Appropriate Difficulty**: Balance remedial topics (easy-medium) for failed areas with advanced topics (medium-hard) for progression.",
+            "5. **Expands Domain Knowledge**: Include new topics that represent the next logical progression in learning this domain.",
+            "",
+            "6. **Maintains Appropriate Difficulty**: Balance remedial topics (easy-medium) for failed areas with advanced topics (medium-hard) for progression.",
             "",
             "## Output Format Requirements:",
             "",
@@ -788,14 +921,14 @@ class DeepResearchClient:
             <topic-1>
             <name>Topic Name</name>
             <summary>Detailed summary addressing specific knowledge gaps or building on mastered concepts</summary>
-            <prerequisites>Prerequisites (reference mastered topics where applicable)</prerequisites>
+            <prerequisites>Prerequisites (reference learned topics where applicable)</prerequisites>
             <learning_objectives>Clear learning objectives that address identified weaknesses or advance knowledge</learning_objectives>
             <difficulty>easy/medium/hard</difficulty>
             </topic-1>
             <topic-2>
             <name>Topic Name</name>
             <summary>Detailed summary addressing specific knowledge gaps or building on mastered concepts</summary>
-            <prerequisites>Prerequisites (reference mastered topics where applicable)</prerequisites>
+            <prerequisites>Prerequisites (reference learned topics where applicable)</prerequisites>
             <learning_objectives>Clear learning objectives that address identified weaknesses or advance knowledge</learning_objectives>
             <difficulty>easy/medium/hard</difficulty>
             </topic-2>
@@ -804,9 +937,10 @@ class DeepResearchClient:
             "",
             "## Important Guidelines:",
             "",
-            "- Create at least 15-20 topics for a comprehensive curriculum",
+            "- Create at least 10 topics for a comprehensive curriculum",
+            "- **NEVER repeat any topic from the historical learned topics list**",
             "- For failed topics, create remedial topics that address the specific misunderstandings",
-            "- For mastered topics, create advanced topics that build upon that knowledge", 
+            "- For areas where the learner is strong, create advanced topics that build upon that knowledge", 
             "- Include a mix of difficulty levels appropriate for the learner's current level",
             "- Ensure topics are logically sequenced and build upon each other",
             "- Make summaries detailed enough to understand what knowledge gaps are being addressed",
@@ -817,6 +951,7 @@ class DeepResearchClient:
     
     def _create_revision_summary(self,
                                mastered_topics: List[str],
+                               all_learned_topics: List[str],
                                failed_topics: List[str],
                                failed_questions_count: int,
                                overall_accuracy: float) -> str:
@@ -824,13 +959,15 @@ class DeepResearchClient:
         
         summary_parts = [
             f"Curriculum revision based on {overall_accuracy:.1%} overall accuracy:",
-            f"- {len(mastered_topics)} topics mastered (>90% accuracy)",
+            f"- {len(mastered_topics)} topics mastered in current iteration",
+            f"- {len(all_learned_topics)} total topics mastered historically",
             f"- {len(failed_topics)} topics need improvement",
             f"- {failed_questions_count} failed questions analyzed for knowledge gaps",
             "",
             "Revision approach:",
+            "- Avoided all previously mastered topics from learning history",
             "- Reinforcement topics created for failed areas",
-            "- Advanced topics created building on mastered knowledge",
+            "- Advanced topics created building on accumulated knowledge",
             "- Specific knowledge gaps addressed based on failed questions",
             "- Balanced difficulty progression maintained"
         ]

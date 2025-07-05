@@ -216,38 +216,59 @@ class CurriculumRevisionEngine:
             raise
 
 
-async def revise_curriculum_from_dpo_results(evaluation_file_path: str,
-                                           current_curriculum_file: Optional[str] = None,
-                                           accuracy_threshold: float = 0.9,
-                                           save_results: bool = True) -> Optional[CurriculumRevisionResult]:
+async def revise_curriculum_from_dpo_results(
+    evaluation_results_path: str,
+    current_curriculum_path: Optional[str] = None,
+    accuracy_threshold: float = 0.9,
+    iteration: int = 1  # Add iteration parameter
+) -> Optional[CurriculumRevisionResult]:
     """
     Convenience function to revise curriculum from DPO evaluation results
     
     Args:
-        evaluation_file_path: Path to DPO evaluation results JSON file
-        current_curriculum_file: Optional path to current curriculum JSON file  
-        accuracy_threshold: Threshold for determining mastery (default 90%)
-        save_results: Whether to save results to file
-    
+        evaluation_results_path: Path to DPO evaluation results JSON file
+        current_curriculum_path: Optional path to current curriculum JSON file
+        accuracy_threshold: Threshold for determining mastery (default 0.9)
+        iteration: Current learning iteration number
+        
     Returns:
         CurriculumRevisionResult or None if failed
-    
-    Example:
-        >>> result = await revise_curriculum_from_dpo_results(
-        ...     "evaluation_results_dpo_20250704_224746.json",
-        ...     "curriculum_test_results.json",
-        ...     accuracy_threshold=0.9
-        ... )
-        >>> if result:
-        ...     print(f"Revised curriculum has {len(result.revised_curriculum.topics)} topics")
     """
     
-    engine = CurriculumRevisionEngine(accuracy_threshold=accuracy_threshold)
-    return await engine.revise_curriculum_from_evaluation_file(
-        evaluation_file_path=evaluation_file_path,
-        current_curriculum_file=current_curriculum_file,
-        save_results=save_results
-    )
+    try:
+        # Load evaluation results
+        with open(evaluation_results_path, 'r', encoding='utf-8') as f:
+            evaluation_results = json.load(f)
+        
+        # Load current curriculum if provided
+        current_curriculum = None
+        if current_curriculum_path and Path(current_curriculum_path).exists():
+            with open(current_curriculum_path, 'r', encoding='utf-8') as f:
+                curriculum_data = json.load(f)
+                
+                # Handle nested curriculum structure (e.g., from test files)
+                if "curriculum" in curriculum_data:
+                    curriculum_dict = curriculum_data["curriculum"]
+                else:
+                    curriculum_dict = curriculum_data
+                    
+                current_curriculum = Curriculum(**curriculum_dict)
+        
+        # Create deep research client and generate revision
+        client = create_deep_research_client()
+        
+        result = await client.generate_revised_curriculum_from_evaluation(
+            evaluation_results=evaluation_results,
+            current_curriculum=current_curriculum,
+            accuracy_threshold=accuracy_threshold,
+            iteration=iteration  # Pass iteration parameter
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to revise curriculum from DPO results: {e}")
+        return None
 
 
 def analyze_dpo_evaluation_performance(evaluation_file_path: str,
@@ -291,9 +312,9 @@ async def handle_high_performance_learner(evaluation_file_path: str) -> Optional
     
     logger.info("Processing high-performance learner curriculum revision")
     return await revise_curriculum_from_dpo_results(
-        evaluation_file_path=evaluation_file_path,
+        evaluation_results_path=evaluation_file_path,
         accuracy_threshold=0.9,
-        save_results=True
+        iteration=1
     )
 
 
@@ -305,9 +326,9 @@ async def handle_struggling_learner(evaluation_file_path: str) -> Optional[Curri
     
     logger.info("Processing struggling learner curriculum revision")
     return await revise_curriculum_from_dpo_results(
-        evaluation_file_path=evaluation_file_path,
+        evaluation_results_path=evaluation_file_path,
         accuracy_threshold=0.7,  # Lower threshold for struggling learners
-        save_results=True
+        iteration=1
     )
 
 
@@ -320,8 +341,8 @@ async def handle_mixed_performance_learner(evaluation_file_path: str,
     
     logger.info("Processing mixed-performance learner curriculum revision")
     return await revise_curriculum_from_dpo_results(
-        evaluation_file_path=evaluation_file_path,
-        current_curriculum_file=current_curriculum_file,
+        evaluation_results_path=evaluation_file_path,
+        current_curriculum_path=current_curriculum_file,
         accuracy_threshold=0.8,  # Moderate threshold
-        save_results=True
+        iteration=1
     ) 

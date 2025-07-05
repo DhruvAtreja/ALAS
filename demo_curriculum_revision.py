@@ -7,6 +7,7 @@ import asyncio
 import sys
 import json
 from pathlib import Path
+from datetime import datetime
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -59,10 +60,10 @@ async def demo_curriculum_revision():
             print(f"\n🧠 Generating revised curriculum...")
             
             revision_result = await revise_curriculum_from_dpo_results(
-                evaluation_file_path=eval_file,
-                current_curriculum_file=current_curriculum_file if Path(current_curriculum_file).exists() else None,
+                evaluation_results_path=eval_file,
+                current_curriculum_path=current_curriculum_file if Path(current_curriculum_file).exists() else None,
                 accuracy_threshold=0.9,
-                save_results=True
+                iteration=1
             )
             
             if revision_result:
@@ -165,30 +166,141 @@ async def demo_different_learner_types():
 
 
 async def main():
-    """Run all demonstrations"""
+    """
+    Demo script showing curriculum revision based on DPO evaluation results
+    """
     
-    print("🚀 Curriculum Revision Demonstration Suite")
+    print("🚀 Curriculum Revision Demo")
     print("=" * 60)
     
-    # Basic demonstration
-    await demo_curriculum_revision()
-    
-    # Different learner types
-    await demo_different_learner_types()
-    
-    print(f"\n🏁 All demonstrations complete!")
-    print(f"\nFiles generated:")
-    print("- curriculum_revision_*.json (revised curricula)")
-    print("- Check timestamps in filenames for latest results")
-    
-    print(f"\nKey Features Demonstrated:")
-    print("✅ Automatic analysis of DPO evaluation results")
-    print("✅ Separation of mastered vs struggling topics")
-    print("✅ Extraction of failed questions with explanations")
-    print("✅ Generation of targeted curriculum addressing knowledge gaps")
-    print("✅ Adaptation for different learner performance levels")
-    print("✅ Building advanced topics on mastered knowledge")
-    print("✅ Deep research API integration for curriculum generation")
+    try:
+        # Test with the DPO evaluation results
+        evaluation_file = "data/evaluations/evaluation_results_dpo_20250704_224746.json"
+        
+        if not Path(evaluation_file).exists():
+            print(f"❌ Evaluation file not found: {evaluation_file}")
+            print("Please run a DPO evaluation first to generate results.")
+            return False
+        
+        print(f"📁 Loading evaluation results from: {evaluation_file}")
+        
+        # Use the simplified function with iteration parameter
+        result = await revise_curriculum_from_dpo_results(
+            evaluation_results_path=evaluation_file,
+            current_curriculum_path="curriculum_test_results.json",
+            accuracy_threshold=0.9,
+            iteration=1  # This is the first iteration after initial training
+        )
+        
+        if not result:
+            print("❌ Failed to generate curriculum revision")
+            return False
+        
+        print("✅ Curriculum revision completed successfully!")
+        print()
+        
+        # Display results summary
+        print("📊 Revision Summary:")
+        print("-" * 40)
+        print(result.revision_summary)
+        print()
+        
+        print("🎯 Performance Analysis:")
+        print(f"- Mastered topics: {len(result.mastered_topics)}")
+        if result.mastered_topics:
+            for topic in result.mastered_topics:
+                print(f"  ✅ {topic}")
+        
+        print(f"- Topics needing improvement: {len(result.failed_topics)}")
+        if result.failed_topics:
+            for topic in result.failed_topics:
+                print(f"  ❌ {topic}")
+        
+        print(f"- Failed questions analyzed: {result.failed_questions_count}")
+        print()
+        
+        # Display learned topics history
+        from src.core.deep_research_client import create_deep_research_client
+        client = create_deep_research_client()
+        
+        domain = "Python Programming"  # This should match the evaluation results
+        all_learned_topics = client.get_all_learned_topic_names(domain)
+        
+        print("📚 Historical Learned Topics:")
+        print(f"- Total topics learned across all iterations: {len(all_learned_topics)}")
+        if all_learned_topics:
+            for i, topic in enumerate(all_learned_topics, 1):
+                print(f"  {i}. {topic}")
+        else:
+            print("  (No topics learned yet)")
+        print()
+        
+        # Show new curriculum details
+        if result.revised_curriculum:
+            curriculum = result.revised_curriculum
+            print("📋 New Curriculum Overview:")
+            print(f"- Domain: {curriculum.domain}")
+            print(f"- Total topics: {curriculum.metadata.total_topics}")
+            print(f"- Difficulty distribution:")
+            print(f"  - Easy: {curriculum.metadata.difficulties.easy}")
+            print(f"  - Medium: {curriculum.metadata.difficulties.medium}")
+            print(f"  - Hard: {curriculum.metadata.difficulties.hard}")
+            print()
+            
+            print("📚 New Topics to Learn:")
+            print("-" * 40)
+            for i, topic in enumerate(curriculum.topics[:5], 1):  # Show first 5 topics
+                print(f"{i}. {topic.name} [{topic.difficulty.value}]")
+                print(f"   {topic.description[:100]}{'...' if len(topic.description) > 100 else ''}")
+                print()
+            
+            if len(curriculum.topics) > 5:
+                print(f"... and {len(curriculum.topics) - 5} more topics")
+                print()
+        
+        # Save results with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = f"curriculum_revision_demo_{timestamp}.json"
+        
+        output_data = {
+            "demo_metadata": {
+                "generated_at": datetime.now().isoformat(),
+                "evaluation_source": evaluation_file,
+                "iteration": 1,
+                "demo_success": True
+            },
+            "revision_result": {
+                "revision_summary": result.revision_summary,
+                "mastered_topics": result.mastered_topics,
+                "failed_topics": result.failed_topics,
+                "failed_questions_count": result.failed_questions_count,
+                "all_learned_topics": all_learned_topics
+            },
+            "revised_curriculum": result.revised_curriculum.model_dump() if result.revised_curriculum else None
+        }
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, indent=2, ensure_ascii=False)
+        
+        print(f"💾 Results saved to: {output_file}")
+        print()
+        
+        print("🎉 Demo completed successfully!")
+        print()
+        print("Next steps:")
+        print("1. Review the revised curriculum topics")
+        print("2. Generate training data for the new topics")
+        print("3. Run fine-tuning with the new training data")
+        print("4. Evaluate the updated model")
+        print("5. Repeat the revision process")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Demo failed with error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 if __name__ == "__main__":
