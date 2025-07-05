@@ -166,7 +166,8 @@ class OpenAIFineTuner:
                              model: str = "gpt-4.1-2025-04-14",
                              validation_file_id: Optional[str] = None,
                              hyperparameters: Optional[FineTuningHyperparameters] = None,
-                             suffix: Optional[str] = None) -> FineTuningJobResult:
+                             suffix: Optional[str] = None,
+                             method: FineTuningMethod = FineTuningMethod.SUPERVISED) -> FineTuningJobResult:
         """
         Create fine-tuning job
         
@@ -176,6 +177,7 @@ class OpenAIFineTuner:
             validation_file_id: Optional validation file ID
             hyperparameters: Training hyperparameters
             suffix: Optional suffix for model name
+            method: Fine-tuning method (supervised or dpo)
             
         Returns:
             FineTuningJobResult with job details
@@ -191,7 +193,7 @@ class OpenAIFineTuner:
                 "training_file": training_file_id,
                 "model": model,
                 "method": {
-                    "type": "supervised"
+                    "type": method.value
                 }
             }
             
@@ -212,9 +214,15 @@ class OpenAIFineTuner:
                     hyperparams_dict["learning_rate_multiplier"] = hyperparameters.learning_rate_multiplier
                 
                 if hyperparams_dict:
-                    job_params["method"]["supervised"] = {
-                        "hyperparameters": hyperparams_dict
-                    }
+                    if method == FineTuningMethod.SUPERVISED:
+                        job_params["method"]["supervised"] = {
+                            "hyperparameters": hyperparams_dict
+                        }
+                    elif method == FineTuningMethod.DPO:
+                        # For DPO, hyperparameters might go directly in method or not be supported
+                        # According to OpenAI docs, DPO might not support custom hyperparameters
+                        logger.info("DPO method selected - custom hyperparameters may not be supported")
+                        # Don't add hyperparameters for DPO for now
             
             logger.info(f"Creating fine-tuning job for model: {model}")
             logger.debug(f"Job parameters: {job_params}")

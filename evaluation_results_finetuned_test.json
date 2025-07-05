@@ -5,30 +5,30 @@
     "format_version": "1.0",
     "model_tested": "ft:gpt-4.1-2025-04-14:endex-ai::BoNAV44A",
     "total_questions": 10,
-    "overall_accuracy": 1.0
+    "overall_accuracy": 0.8
   },
   "evaluation_results": {
     "domain": "Python Programming",
     "model_tested": "ft:gpt-4.1-2025-04-14:endex-ai::BoNAV44A",
     "total_topics": 1,
     "total_questions": 10,
-    "overall_accuracy": 1.0,
+    "overall_accuracy": 0.8,
     "topic_results": [
       {
         "topic_id": "python_programming_001",
         "topic_name": "Introduction to Python Programming",
         "total_questions": 10,
-        "correct_answers": 10,
-        "incorrect_answers": 0,
-        "accuracy": 1.0,
+        "correct_answers": 8,
+        "incorrect_answers": 2,
+        "accuracy": 0.8,
         "results": [
           {
             "question_id": "python_programming_001_q001",
             "question": "What is the Python programming language, and what is it known for?",
-            "model_answer": "Python is a high-level, interpreted, general-purpose programming language widely known for its simplicity and readability. Created in the early 1990s by Guido van Rossum, Python was designed with an emphasis on making code easy to write and easy to understand. One of Python’s most distinctive features is its clean, English-like syntax that uses indentation instead of lots of punctuation, which allows programmers to express concepts in fewer lines of code compared to many other languages. Python is also very versatile: it can be used for web development, data analysis, artificial intelligence, scientific computing, automation, and much more. Thanks to its large standard library and supportive community, Python has tools and frameworks for almost any task. Additionally, Python’s ease of learning and use has made it a popular choice for beginners as well as professionals. All these qualities have contributed to Python’s reputation as an accessible yet powerful language, and they are key reasons why Python has become one of the most popular programming languages in the world.",
+            "model_answer": "Python is a low-level, compiled programming language mainly used for system programming and device drivers. It is known for its complex syntax and is rarely used for web development or data analysis.",
             "ideal_answer": "Python is a high-level, interpreted, general-purpose programming language widely known for its readability and ease of use. It features a clean, English-like syntax that uses indentation rather than lots of punctuation, so Python code tends to be straightforward and easy to understand. Python is also very versatile: it can be used for web development, data analysis, artificial intelligence, scientific computing, automation, and much more. Thanks to its simple syntax and a large standard library, developers can often accomplish tasks with fewer lines of code than in other languages. Python’s design philosophy emphasizes code readability and developer productivity, and coupled with a large supportive community, these qualities have made Python one of the most popular programming languages in the world.",
-            "is_correct": true,
-            "explanation": "The model’s answer includes all the key points from the ideal answer, describing Python as a high-level, readable, and versatile language. It covers Python’s clean syntax (indentation-based), ease of use, wide range of applications, and popularity, without any contradictions, indicating a correct understanding.",
+            "is_correct": false,
+            "explanation": "The model's answer is incorrect. It describes Python as a low-level, compiled language, which is not true—Python is high-level and interpreted. It also incorrectly states that Python is mainly used for system programming and device drivers, and that it is rarely used for web development or data analysis, which is the opposite of reality.",
             "topic_id": "python_programming_001",
             "topic_name": "Introduction to Python Programming",
             "category": "Factual Recall",
@@ -37,10 +37,10 @@
           {
             "question_id": "python_programming_001_q002",
             "question": "Who created the Python programming language, and when was it first released?",
-            "model_answer": "Python was created by Guido van Rossum, a Dutch programmer. He started developing Python in the late 1980s, and the first public release of Python happened in 1991. Guido van Rossum released Python as an open-source project, and he continued to lead its development for many years (earning the title “Benevolent Dictator For Life” in the Python community). The language was named after the British comedy show “Monty Python’s Flying Circus,” which reflects Guido’s playful mindset. From its first release in 1991, Python quickly gained attention for its simple and readable syntax, and it has grown steadily ever since.",
+            "model_answer": "Python was created by Dennis Ritchie in 1989 and was first released in 1995. It was named after the snake species Python regius.",
             "ideal_answer": "Python was created by Guido van Rossum, a Dutch programmer. He started developing Python in the late 1980s, and the first public release of Python occurred in 1991. The language was named after the British comedy show “Monty Python’s Flying Circus,” which reflects Guido van Rossum’s playful mindset. Right from its first release, Python was designed with an emphasis on simplicity and readability, which helped it gain early adoption. Guido van Rossum continued to lead Python’s development for many years, earning the title “Benevolent Dictator For Life” (BDFL) in the Python community.",
-            "is_correct": true,
-            "explanation": "The model correctly states that Guido van Rossum created Python and that it was first released in 1991, matching the ideal answer. It also includes additional accurate context (like the Monty Python name reference and Guido’s BDFL role) without deviating from the facts, so the answer is correct.",
+            "is_correct": false,
+            "explanation": "The model's answer is incorrect. Python was not created by Dennis Ritchie (who created C), but by Guido van Rossum. The release year and the origin of the name are also wrong.",
             "topic_id": "python_programming_001",
             "topic_name": "Introduction to Python Programming",
             "category": "Factual Recall",
@@ -154,9 +154,9 @@
     ],
     "category_performance": {
       "Factual Recall": {
-        "correct": 2,
+        "correct": 0,
         "total": 2,
-        "accuracy": 1.0
+        "accuracy": 0.0
       },
       "Conceptual Understanding": {
         "correct": 2,
@@ -181,9 +181,9 @@
     },
     "difficulty_performance": {
       "easy": {
-        "correct": 5,
+        "correct": 3,
         "total": 5,
-        "accuracy": 1.0
+        "accuracy": 0.6
       },
       "medium": {
         "correct": 5,
