@@ -325,25 +325,25 @@ class DeepResearchClient:
                 # Add max_completion_tokens for o3/o4-mini models if needed
                 # (These models have different parameter requirements)
                 
-                response = self.client.responses.create(
+                response = await self.async_client.responses.create(
                 model="o3-deep-research",
                 input=query,
                 tools=[
                     {"type": "web_search_preview"},
                 ],
+                max_output_tokens=100000,
                 )
-
-                print("finished")
                 
             except Exception as primary_error:
                 logger.warning(f"Primary model {primary_model} failed, trying fallback: {primary_error}")
                          
-                response = self.client.responses.create(
+                response = await self.async_client.responses.create(
                     model="o4-mini-deep-research",
                     input=query,
                     tools=[
                         {"type": "web_search_preview"},
                     ],
+                    max_output_tokens=100000,
                 )
             
             # Parse response
@@ -476,8 +476,6 @@ class DeepResearchClient:
             domain=domain,
             depth="comprehensive"
         )
-
-        print(response)
         
         try:
             # Extract curriculum from XML response
@@ -603,7 +601,7 @@ class DeepResearchClient:
         """
         
         prompt = f"""
-        Based on the following content about "{topic_name}", generate {num_questions} diverse training questions and answers.
+        Based on the following content about "{topic_name}", generate {num_questions} diverse training questions and answers. Use your web search to make sure you have up to date information.
         
         Content:
         {topic_content}
@@ -655,7 +653,7 @@ class DeepResearchClient:
     async def parallel_research(self, 
                               queries: List[str],
                               domain: str,
-                              max_concurrent: int = 3) -> List[DeepResearchResponse]:
+                              max_concurrent: int = 50) -> List[DeepResearchResponse]:
         """
         Research multiple topics concurrently with rate limiting
         

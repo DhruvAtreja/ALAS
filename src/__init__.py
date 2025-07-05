@@ -1,5 +1,1 @@
-"""
-ALAS - Autonomous Learning Agent System
-"""
-
-__version__ = "0.1.0" 
+# Autonomous Learning Agent System (ALAS) 

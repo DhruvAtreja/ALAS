@@ -24,7 +24,7 @@ logger = get_logger(__name__)
 async def generate_training_data_from_curriculum(
     curriculum_file: str,
     output_file: Optional[str] = None,
-    questions_per_topic: int = 50,
+    questions_per_topic: int = 10,
     max_concurrent: int = 3,
     export_openai: bool = True
 ):

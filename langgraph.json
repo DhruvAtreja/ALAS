@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "agent": "src.workflows.autonomous_learning_agent:create_autonomous_learning_graph"
+  },
+  "env": ".env"
+} 

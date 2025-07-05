@@ -55,8 +55,22 @@ class CurriculumGenerator:
                 learning_goals=learning_goals
             )
             
-            # Convert to Topic objects
-            topics = self._convert_to_topics(curriculum_data, domain)
+            # Convert to Topic objects  
+            if curriculum_data:
+                topics = [
+                    Topic(
+                        id=ct.id,
+                        name=ct.name,
+                        description=ct.description,
+                        depth=ct.depth,
+                        parent_id=None,
+                        status=TopicStatus.PENDING,
+                        priority=ct.priority.value
+                    )
+                    for ct in curriculum_data.topics
+                ]
+            else:
+                topics = []
             
             # Limit to breadth_topics for initial learning
             initial_topics = topics[:breadth_topics]
@@ -115,7 +129,7 @@ class CurriculumGenerator:
             )
             
             # Parse subtopics from response
-            subtopics_data = self._extract_subtopics_from_response(response.content)
+            subtopics_data = self._extract_subtopics_from_response(response)
             
             # Convert to Topic objects
             subtopics = []
@@ -188,7 +202,7 @@ class CurriculumGenerator:
             )
             
             # Parse revised topics
-            revised_data = self._extract_topics_from_response(response.content)
+            revised_data = self._extract_topics_from_response(response)
             revised_topics = self._convert_to_topics({"topics": revised_data}, domain)
             
             logger.info(f"Generated {len(revised_topics)} revised topics")

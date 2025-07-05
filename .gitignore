@@ -1,9 +1,7 @@
 # Environment variables
 .env
 .env.*
-
-# Markdown files
-*.md
+*.pckl
 
 # Python
 __pycache__/

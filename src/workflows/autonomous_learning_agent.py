@@ -154,12 +154,14 @@ class AutonomousLearningAgent:
     
     async def initialize_node(self, state: AutonomousLearningState) -> Dict[str, Any]:
         """Initialize the learning session"""
-        logger.info(f"🚀 Initializing autonomous learning for domain: {state['domain']}")
+        domain = "Self-Adapting Language Models, research paper"
+        logger.info(f"🚀 Initializing autonomous learning for domain: {domain}")
         
         current_time = datetime.now().isoformat()
         session_id = state.get('session_id', str(uuid.uuid4()))
         
         return {
+            "domain": domain,
             "session_id": session_id,
             "current_iteration": 1,
             "max_iterations": self.max_iterations,
@@ -671,6 +673,27 @@ class AutonomousLearningAgent:
 # Factory function
 def create_autonomous_learning_agent(max_iterations: int = 5) -> AutonomousLearningAgent:
     """Create and compile an autonomous learning agent"""
-    agent = AutonomousLearningAgent(max_iterations=max_iterations)
-    agent.compile()
-    return agent 
+    try:
+        agent = AutonomousLearningAgent(max_iterations=max_iterations)
+        agent.compile()
+        return agent
+    except Exception as e:
+        logger.error(f"Failed to create autonomous learning agent: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+# Factory function for LangGraph Studio
+def create_autonomous_learning_graph(max_iterations: int = 5):
+    """Create and compile an autonomous learning agent graph for LangGraph Studio"""
+    try:
+        agent = AutonomousLearningAgent(max_iterations=max_iterations)
+        graph = agent.compile()
+        if graph is None:
+            raise ValueError("Failed to compile graph - returned None")
+        return graph
+    except Exception as e:
+        logger.error(f"Failed to create autonomous learning agent: {e}")
+        import traceback
+        traceback.print_exc()
+        raise 

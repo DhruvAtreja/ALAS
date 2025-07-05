@@ -436,15 +436,27 @@ class ModelEvaluator:
         # Group by topic
         topic_groups = self.group_responses_by_topic(model_responses)
         
-        # Evaluate each topic
+        # Evaluate each topic in parallel
+        logger.info(f"Evaluating {len(topic_groups)} topics in parallel")
+        
+        # Create evaluation tasks for parallel processing
+        evaluation_tasks = [
+            self.evaluate_topic_responses(topic_id, responses)
+            for topic_id, responses in topic_groups.items()
+        ]
+        
+        # Execute evaluations in parallel
+        evaluation_results = await asyncio.gather(*evaluation_tasks, return_exceptions=True)
+        
+        # Process results
         topic_evaluations = []
-        for topic_id, responses in topic_groups.items():
-            try:
-                topic_eval = await self.evaluate_topic_responses(topic_id, responses)
-                topic_evaluations.append(topic_eval)
-            except Exception as e:
-                logger.error(f"Failed to evaluate topic {topic_id}: {e}")
+        for i, result in enumerate(evaluation_results):
+            topic_id = list(topic_groups.keys())[i]
+            if isinstance(result, Exception):
+                logger.error(f"Failed to evaluate topic {topic_id}: {result}")
                 continue
+            else:
+                topic_evaluations.append(result)
         
         # Calculate overall statistics
         total_questions = sum(topic.total_questions for topic in topic_evaluations)

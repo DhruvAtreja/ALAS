@@ -51,13 +51,13 @@ class CurriculumTrainingData(BaseModel):
 class TrainingDataGenerator:
     """Generates training data from curriculum topics using Deep Research API"""
     
-    def __init__(self, max_concurrent: int = 3, questions_per_topic: int = 50):
+    def __init__(self, max_concurrent: int = 50, questions_per_topic: int = 10):
         self.client = create_deep_research_client()
         self.max_concurrent = max_concurrent
         self.questions_per_topic = questions_per_topic
         self.semaphore = asyncio.Semaphore(max_concurrent)
         
-    async def generate_topic_questions(self, topic: CurriculumTopic) -> TopicTrainingData:
+    async def generate_topic_questions(self, topic: CurriculumTopic, domain: str) -> TopicTrainingData:
         """Generate training questions for a single topic"""
         
         async with self.semaphore:
@@ -65,7 +65,7 @@ class TrainingDataGenerator:
                 logger.info(f"Generating {self.questions_per_topic} questions for topic: {topic.name}")
                 
                 # Create detailed prompt for question generation
-                prompt = self._build_question_generation_prompt(topic)
+                prompt = self._build_question_generation_prompt(topic, domain)
                 
                 # Make API call
                 start_time = datetime.now()
@@ -116,12 +116,13 @@ class TrainingDataGenerator:
                     }
                 )
     
-    def _build_question_generation_prompt(self, topic: CurriculumTopic) -> str:
+    def _build_question_generation_prompt(self, topic: CurriculumTopic, domain: str) -> str:
         """Build a detailed prompt for generating training questions"""
         
-        prompt = f"""Generate {self.questions_per_topic} diverse training questions and answers for the topic: "{topic.name}"
+        prompt = f"""Generate {self.questions_per_topic} diverse training questions and answers for the topic: "{topic.name}" in the domain of "{domain}. Use your web search to make sure you have up to date information about the topic".
 
 Topic Details:
+- Domain: {domain}
 - Description: {topic.description}
 - Learning Objectives: {topic.learning_objectives}
 - Difficulty Level: {topic.difficulty.value}
@@ -233,7 +234,7 @@ Requirements:
         
         # Create tasks for parallel processing
         tasks = [
-            self.generate_topic_questions(topic) 
+            self.generate_topic_questions(topic, curriculum.domain) 
             for topic in curriculum.topics
         ]
         
@@ -365,6 +366,6 @@ Requirements:
 
 
 # Factory function
-def create_training_data_generator(max_concurrent: int = 3, questions_per_topic: int = 50) -> TrainingDataGenerator:
+def create_training_data_generator(max_concurrent: int = 50, questions_per_topic: int = 10) -> TrainingDataGenerator:
     """Create a configured training data generator"""
     return TrainingDataGenerator(max_concurrent=max_concurrent, questions_per_topic=questions_per_topic) 

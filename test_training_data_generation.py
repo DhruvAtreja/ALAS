@@ -67,7 +67,7 @@ async def test_single_topic_generation():
         )
         
         # Generate questions for single topic
-        topic_data = await generator.generate_topic_questions(test_topic)
+        topic_data = await generator.generate_topic_questions(test_topic, curriculum.domain)
         
         print(f"✅ Generated {len(topic_data.questions)} questions")
         print(f"Generation time: {topic_data.generation_metadata['generation_duration']:.2f}s")
