@@ -1,0 +1,22 @@
+{
+  "dpo_improvement_summary": {
+    "timestamp": "2025-07-04T22:47:46.106866",
+    "original_model": "ft:gpt-4.1-2025-04-14:endex-ai::BoNAV44A",
+    "dpo_model": "ft:gpt-4.1-2025-04-14:endex-ai:dpo:BpnBqE2I",
+    "accuracy_improvement": {
+      "original_accuracy": 0.8,
+      "improved_accuracy": 1.0,
+      "improvement": 0.19999999999999996,
+      "improvement_percentage": "20.00%"
+    },
+    "training_details": {
+      "dpo_examples_count": 2,
+      "processing_time_seconds": 3674.864861
+    },
+    "files": {
+      "original_evaluation": "evaluation_results_finetuned_test.json",
+      "improved_evaluation": "data/evaluations/evaluation_results_dpo_20250704_224746.json",
+      "dpo_training_data": "data/training_data/dpo_training_20250704_214631.jsonl"
+    }
+  }
+}

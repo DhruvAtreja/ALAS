@@ -111,6 +111,26 @@ class Curriculum(BaseModel):
     metadata: CurriculumMetadata = Field(..., description="Curriculum metadata")
 
 
+class CurriculumRevisionRequest(BaseModel):
+    """Request for curriculum revision based on evaluation results"""
+    domain: str = Field(..., description="The learning domain")
+    mastered_topics: List[str] = Field(default_factory=list, description="Topics with >90% accuracy")
+    failed_topics: List[str] = Field(default_factory=list, description="Topics with <90% accuracy")
+    failed_questions: List[Dict[str, Any]] = Field(default_factory=list, description="Failed questions with explanations")
+    total_questions_analyzed: int = Field(default=0, description="Total questions analyzed")
+    overall_accuracy: float = Field(default=0.0, description="Overall accuracy across all topics")
+
+
+class CurriculumRevisionResult(BaseModel):
+    """Result of curriculum revision"""
+    original_curriculum: Optional[Curriculum] = Field(default=None, description="Original curriculum if provided")
+    revised_curriculum: Optional[Curriculum] = Field(default=None, description="New/revised curriculum")
+    revision_summary: str = Field(default="", description="Summary of revision changes")
+    mastered_topics: List[str] = Field(default_factory=list, description="Topics mastered")
+    failed_topics: List[str] = Field(default_factory=list, description="Topics that need improvement")
+    failed_questions_count: int = Field(default=0, description="Number of failed questions analyzed")
+
+
 class DeepResearchClient:
     """Client for OpenAI's Deep Research API"""
     
@@ -561,6 +581,261 @@ class DeepResearchClient:
         
         logger.info(f"Completed {len(successful_results)}/{len(queries)} research tasks")
         return successful_results
+
+
+    async def generate_revised_curriculum_from_evaluation(self, 
+                                                        evaluation_results: Dict[str, Any],
+                                                        current_curriculum: Optional[Curriculum] = None,
+                                                        accuracy_threshold: float = 0.9) -> Optional[CurriculumRevisionResult]:
+        """
+        Generate revised curriculum based on DPO evaluation results
+        
+        Args:
+            evaluation_results: DPO evaluation results in expected format
+            current_curriculum: Optional current curriculum for context
+            accuracy_threshold: Threshold for determining mastery (default 0.9 for 90%)
+        
+        Returns:
+            CurriculumRevisionResult containing revised curriculum and analysis
+        """
+        
+        try:
+            # Extract domain and basic info
+            domain = evaluation_results.get("evaluation_results", {}).get("domain", "Unknown Domain")
+            overall_accuracy = evaluation_results.get("evaluation_results", {}).get("overall_accuracy", 0.0)
+            topic_results = evaluation_results.get("evaluation_results", {}).get("topic_results", [])
+            
+            # Analyze topic performance
+            mastered_topics = []
+            failed_topics = []
+            failed_questions = []
+            
+            for topic_result in topic_results:
+                topic_name = topic_result.get("topic_name", "Unknown Topic")
+                topic_accuracy = topic_result.get("accuracy", 0.0)
+                
+                if topic_accuracy >= accuracy_threshold:
+                    mastered_topics.append(topic_name)
+                else:
+                    failed_topics.append(topic_name)
+                    
+                    # Extract failed questions from this topic
+                    topic_failed_questions = self._extract_failed_questions(topic_result)
+                    failed_questions.extend(topic_failed_questions)
+            
+            # Limit failed questions to maximum 100 as requested
+            if len(failed_questions) > 100:
+                failed_questions = failed_questions[:100]
+                logger.warning(f"Truncated failed questions to 100 (originally {len(failed_questions)})")
+            
+            # Generate curriculum revision prompt
+            revision_prompt = self._build_curriculum_revision_prompt(
+                domain=domain,
+                mastered_topics=mastered_topics,
+                failed_topics=failed_topics,
+                failed_questions=failed_questions,
+                overall_accuracy=overall_accuracy,
+                current_curriculum=current_curriculum
+            )
+            
+            # Call deep research API
+            logger.info(f"Generating revised curriculum for domain: {domain}")
+            logger.info(f"Mastered topics: {len(mastered_topics)}, Failed topics: {len(failed_topics)}")
+            logger.info(f"Failed questions to analyze: {len(failed_questions)}")
+            
+            response = await self.research_topic(
+                query=revision_prompt,
+                domain=domain,
+                depth="comprehensive"
+            )
+            
+            # Parse the revised curriculum
+            revised_curriculum = self._extract_curriculum_from_text(response, domain)
+            
+            # Create revision summary
+            revision_summary = self._create_revision_summary(
+                mastered_topics=mastered_topics,
+                failed_topics=failed_topics,
+                failed_questions_count=len(failed_questions),
+                overall_accuracy=overall_accuracy
+            )
+            
+            return CurriculumRevisionResult(
+                original_curriculum=current_curriculum,
+                revised_curriculum=revised_curriculum,
+                revision_summary=revision_summary,
+                mastered_topics=mastered_topics,
+                failed_topics=failed_topics,
+                failed_questions_count=len(failed_questions)
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to generate revised curriculum: {e}")
+            return None
+    
+    def _extract_failed_questions(self, topic_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract failed questions from a topic result"""
+        failed_questions = []
+        
+        results = topic_result.get("results", [])
+        for result in results:
+            if not result.get("is_correct", True):  # Default to True if not specified
+                failed_question = {
+                    "question_id": result.get("question_id", "unknown"),
+                    "question": result.get("question", "Question not available"),
+                    "model_answer": result.get("model_answer", "Model answer not available"),
+                    "ideal_answer": result.get("ideal_answer", "Ideal answer not available"),
+                    "explanation": result.get("explanation", "No explanation provided"),
+                    "topic_name": topic_result.get("topic_name", "Unknown Topic"),
+                    "category": result.get("category", "Unknown Category"),
+                    "difficulty": result.get("difficulty", "Unknown Difficulty")
+                }
+                failed_questions.append(failed_question)
+        
+        return failed_questions
+    
+    def _build_curriculum_revision_prompt(self,
+                                        domain: str,
+                                        mastered_topics: List[str],
+                                        failed_topics: List[str],
+                                        failed_questions: List[Dict[str, Any]],
+                                        overall_accuracy: float,
+                                        current_curriculum: Optional[Curriculum] = None) -> str:
+        """Build comprehensive prompt for curriculum revision"""
+        
+        prompt_parts = [
+            f"Create a revised learning curriculum for the domain: <domain>{domain}</domain>",
+            "",
+            "## Current Learning Status:",
+            f"- Overall accuracy: {overall_accuracy:.1%}",
+            f"- Topics mastered (>90% accuracy): {len(mastered_topics)}",
+            f"- Topics needing improvement: {len(failed_topics)}",
+            f"- Failed questions analyzed: {len(failed_questions)}",
+            ""
+        ]
+        
+        # Add mastered topics
+        if mastered_topics:
+            prompt_parts.extend([
+                "## Topics Already Mastered (>90% accuracy):",
+                "The learner has demonstrated proficiency in these topics:",
+                *[f"- <mastered_topic>{topic}</mastered_topic>" for topic in mastered_topics],
+                ""
+            ])
+        
+        # Add failed topics and questions
+        if failed_topics or failed_questions:
+            prompt_parts.extend([
+                "## Topics Needing Improvement:",
+                "The learner struggled with these topics and questions:",
+                ""
+            ])
+            
+            if failed_topics:
+                prompt_parts.extend([
+                    "### Failed Topics:",
+                    *[f"- <failed_topic>{topic}</failed_topic>" for topic in failed_topics],
+                    ""
+                ])
+            
+            if failed_questions:
+                prompt_parts.extend([
+                    "### Specific Questions That Were Answered Incorrectly:",
+                    ""
+                ])
+                
+                for i, question in enumerate(failed_questions, 1):
+                    prompt_parts.extend([
+                        f"**Question {i}:** {question['question']}",
+                        f"**Topic:** {question['topic_name']}",
+                        f"**Category:** {question['category']} | **Difficulty:** {question['difficulty']}",
+                        f"**Model's Incorrect Answer:** {question['model_answer'][:200]}{'...' if len(question['model_answer']) > 200 else ''}",
+                        f"**Correct Answer:** {question['ideal_answer'][:200]}{'...' if len(question['ideal_answer']) > 200 else ''}",
+                        f"**Why the answer was wrong:** {question['explanation']}",
+                        ""
+                    ])
+        
+        # Add current curriculum context if available
+        if current_curriculum:
+            prompt_parts.extend([
+                "## Current Curriculum Context:",
+                f"The current curriculum has {len(current_curriculum.topics)} topics.",
+                "Consider this context when creating the revised curriculum.",
+                ""
+            ])
+        
+        # Add revision instructions
+        prompt_parts.extend([
+            "## Curriculum Revision Instructions:",
+            "",
+            "Based on the learning performance analysis above, create a comprehensive revised curriculum that:",
+            "",
+            "1. **Reinforces Failed Topics**: For topics where the learner struggled, create focused sub-topics that address the specific knowledge gaps revealed by the failed questions.",
+            "",
+            "2. **Addresses Specific Mistakes**: Design topics that directly address the misunderstandings shown in the failed questions above.",
+            "",
+            "3. **Builds on Mastered Topics**: Since the learner has mastered certain topics, create more advanced topics that build upon that foundation.",
+            "",
+            "4. **Expands Domain Knowledge**: Include new topics that represent the next logical progression in learning this domain.",
+            "",
+            "5. **Maintains Appropriate Difficulty**: Balance remedial topics (easy-medium) for failed areas with advanced topics (medium-hard) for progression.",
+            "",
+            "## Output Format Requirements:",
+            "",
+            "Your response must be in the following XML format:",
+            "",
+            '''<curriculum>
+            <topic-1>
+            <name>Topic Name</name>
+            <summary>Detailed summary addressing specific knowledge gaps or building on mastered concepts</summary>
+            <prerequisites>Prerequisites (reference mastered topics where applicable)</prerequisites>
+            <learning_objectives>Clear learning objectives that address identified weaknesses or advance knowledge</learning_objectives>
+            <difficulty>easy/medium/hard</difficulty>
+            </topic-1>
+            <topic-2>
+            <name>Topic Name</name>
+            <summary>Detailed summary addressing specific knowledge gaps or building on mastered concepts</summary>
+            <prerequisites>Prerequisites (reference mastered topics where applicable)</prerequisites>
+            <learning_objectives>Clear learning objectives that address identified weaknesses or advance knowledge</learning_objectives>
+            <difficulty>easy/medium/hard</difficulty>
+            </topic-2>
+            ...
+            </curriculum>''',
+            "",
+            "## Important Guidelines:",
+            "",
+            "- Create at least 15-20 topics for a comprehensive curriculum",
+            "- For failed topics, create remedial topics that address the specific misunderstandings",
+            "- For mastered topics, create advanced topics that build upon that knowledge", 
+            "- Include a mix of difficulty levels appropriate for the learner's current level",
+            "- Ensure topics are logically sequenced and build upon each other",
+            "- Make summaries detailed enough to understand what knowledge gaps are being addressed",
+            ""
+        ])
+        
+        return "\n".join(prompt_parts)
+    
+    def _create_revision_summary(self,
+                               mastered_topics: List[str],
+                               failed_topics: List[str],
+                               failed_questions_count: int,
+                               overall_accuracy: float) -> str:
+        """Create a summary of the curriculum revision"""
+        
+        summary_parts = [
+            f"Curriculum revision based on {overall_accuracy:.1%} overall accuracy:",
+            f"- {len(mastered_topics)} topics mastered (>90% accuracy)",
+            f"- {len(failed_topics)} topics need improvement",
+            f"- {failed_questions_count} failed questions analyzed for knowledge gaps",
+            "",
+            "Revision approach:",
+            "- Reinforcement topics created for failed areas",
+            "- Advanced topics created building on mastered knowledge",
+            "- Specific knowledge gaps addressed based on failed questions",
+            "- Balanced difficulty progression maintained"
+        ]
+        
+        return "\n".join(summary_parts)
 
 
 # Factory function
