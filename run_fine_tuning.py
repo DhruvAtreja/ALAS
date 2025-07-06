@@ -181,7 +181,7 @@ async def run_fine_tuning(
             logger.info(f"🏷️  Model suffix: {suffix}")
         
         # Run fine-tuning
-        result = fine_tuner.fine_tune_from_file(
+        result = await fine_tuner.fine_tune_from_file(
             training_file_path=training_file,
             model=model,
             validation_file_path=validation_file,

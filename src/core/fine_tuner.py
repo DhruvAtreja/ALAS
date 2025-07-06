@@ -13,6 +13,7 @@ import os
 from openai import OpenAI, AsyncOpenAI
 from pydantic import BaseModel, Field
 from enum import Enum
+from langsmith import traceable
 
 try:
     from ..config.settings import settings
@@ -112,6 +113,7 @@ class OpenAIFineTuner:
         rate = cost_per_1k_tokens.get(model, 0.025)  # Default to highest rate
         return (training_tokens / 1000) * rate
     
+    @traceable
     def upload_training_file(self, file_path: Union[str, Path]) -> FileUploadResult:
         """
         Upload training data file to OpenAI
@@ -161,6 +163,7 @@ class OpenAIFineTuner:
             log_error(e, {"file_path": str(file_path)})
             raise FineTuningError(f"Failed to upload training file: {e}")
     
+    @traceable
     def create_fine_tuning_job(self,
                              training_file_id: str,
                              model: str = "gpt-4.1-2025-04-14",
@@ -322,6 +325,24 @@ class OpenAIFineTuner:
         Returns:
             FineTuningJobResult when job completes
         """
+        # Run async version in sync context
+        return asyncio.run(self.async_wait_for_job_completion(job_id, poll_interval, timeout))
+    
+    async def async_wait_for_job_completion(self, 
+                                          job_id: str,
+                                          poll_interval: int = 60,
+                                          timeout: Optional[int] = None) -> FineTuningJobResult:
+        """
+        Async wait for fine-tuning job to complete
+        
+        Args:
+            job_id: Fine-tuning job ID
+            poll_interval: Seconds between status checks
+            timeout: Maximum wait time in seconds
+            
+        Returns:
+            FineTuningJobResult when job completes
+        """
         start_time = time.time()
         logger.info(f"Waiting for fine-tuning job {job_id} to complete...")
         
@@ -349,14 +370,14 @@ class OpenAIFineTuner:
                     raise FineTuningError(f"Job {job_id} timed out after {timeout} seconds")
                 
                 # Wait before next check
-                time.sleep(poll_interval)
+                await asyncio.sleep(poll_interval)
                 
             except KeyboardInterrupt:
                 logger.info("Interrupted by user")
                 return self.get_job_status(job_id)
             except Exception as e:
                 logger.error(f"Error checking job status: {e}")
-                time.sleep(poll_interval)
+                await asyncio.sleep(poll_interval)
     
     def list_fine_tuning_jobs(self, limit: int = 20) -> List[FineTuningJobResult]:
         """
@@ -448,7 +469,8 @@ class OpenAIFineTuner:
             log_error(e, {"job_id": job_id})
             raise FineTuningError(f"Failed to cancel job: {e}")
     
-    def fine_tune_from_file(self,
+    @traceable
+    async def fine_tune_from_file(self,
                           training_file_path: str,
                           model: str = "gpt-4.1-2025-04-14",
                           validation_file_path: Optional[str] = None,
@@ -493,7 +515,8 @@ class OpenAIFineTuner:
         
         # Wait for completion if requested
         if wait_for_completion:
-            job = self.wait_for_job_completion(job.job_id, poll_interval)
+            # Use async version for waiting
+            job = await self.async_wait_for_job_completion(job.job_id, poll_interval)
         
         return job
 

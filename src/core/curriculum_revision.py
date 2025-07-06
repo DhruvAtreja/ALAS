@@ -11,6 +11,7 @@ from datetime import datetime
 try:
     from .deep_research_client import create_deep_research_client, Curriculum, CurriculumRevisionResult
     from ..utils.logger import get_logger
+    from langsmith import traceable
 except ImportError:
     # Fallback for when running directly
     import sys
@@ -18,6 +19,7 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from core.deep_research_client import create_deep_research_client, Curriculum, CurriculumRevisionResult
     from utils.logger import get_logger
+    from langsmith import traceable
 
 logger = get_logger(__name__)
 
@@ -83,6 +85,7 @@ class CurriculumRevisionEngine:
             logger.error(f"Failed to revise curriculum from file: {e}")
             return None
     
+    @traceable
     async def revise_curriculum_from_evaluation(self, 
                                               evaluation_results: Dict[str, Any],
                                               current_curriculum: Optional[Dict[str, Any]] = None) -> Optional[CurriculumRevisionResult]:
@@ -216,6 +219,7 @@ class CurriculumRevisionEngine:
             raise
 
 
+@traceable
 async def revise_curriculum_from_dpo_results(
     evaluation_results_path: str,
     current_curriculum_path: Optional[str] = None,

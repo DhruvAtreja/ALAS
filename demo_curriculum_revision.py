@@ -224,7 +224,7 @@ async def main():
         client = create_deep_research_client()
         
         domain = "Python Programming"  # This should match the evaluation results
-        all_learned_topics = client.get_all_learned_topic_names(domain)
+        all_learned_topics = await client.get_all_learned_topic_names(domain)
         
         print("📚 Historical Learned Topics:")
         print(f"- Total topics learned across all iterations: {len(all_learned_topics)}")

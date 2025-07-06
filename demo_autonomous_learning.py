@@ -6,10 +6,12 @@ Tests the complete self-learning loop with LangGraph orchestration
 import asyncio
 import json
 from pathlib import Path
+from langsmith import traceable
 
 from src.workflows.autonomous_learning_agent import create_autonomous_learning_agent
 
 
+@traceable
 async def main():
     """Demo the autonomous learning agent"""
     

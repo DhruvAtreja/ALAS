@@ -67,13 +67,11 @@ async def generate_training_data_from_curriculum(
         print(training_data)
         
         # Save results
-        json_filename = generator.save_training_data(training_data, output_file)
-        print("json_filename")
-        print(json_filename)
+        json_filename = await generator.save_training_data(training_data, output_file)
         
         if export_openai:
             openai_filename = json_filename.replace('.json', '_openai.jsonl')
-            generator.export_for_openai_finetuning(training_data, openai_filename)
+            await generator.export_for_openai_finetuning(training_data, openai_filename)
             logger.info(f"📄 OpenAI format exported to: {openai_filename}")
         
         # Print summary

@@ -14,10 +14,12 @@ from pathlib import Path
 from openai import OpenAI, AsyncOpenAI
 from pydantic import BaseModel, Field
 from enum import Enum
+from langsmith import traceable
 
 try:
     from ..config.settings import settings
     from ..utils.logger import get_logger, log_api_call, log_cost, log_error
+    from ..utils.async_file_utils import async_read_json, async_write_json
 except ImportError:
     # Fallback for when running directly
     import sys
@@ -25,6 +27,7 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from config.settings import settings
     from utils.logger import get_logger, log_api_call, log_cost, log_error
+    from utils.async_file_utils import async_read_json, async_write_json
 
 logger = get_logger(__name__)
 
@@ -201,13 +204,13 @@ class DeepResearchClient:
         # Fallback estimate for deep research
         return 0.50 if model == "o3" else 0.10
 
-    def save_learned_topics(self, domain: str, mastered_topics: List[str], accuracy_scores: Dict[str, float], iteration: int) -> None:
+    async def save_learned_topics(self, domain: str, mastered_topics: List[str], accuracy_scores: Dict[str, float], iteration: int) -> None:
         """Save newly mastered topics to the learned topics history file"""
         try:
             current_time = datetime.now().isoformat()
             
             # Load existing history or create new
-            history = self.load_learned_topics_history(domain)
+            history = await self.load_learned_topics_history(domain)
             
             # Add new learned topics
             for topic_name in mastered_topics:
@@ -241,8 +244,7 @@ class DeepResearchClient:
             history.total_topics_learned = len(history.learned_topics)
             
             # Save to file
-            with open(self.learned_topics_file, 'w', encoding='utf-8') as f:
-                json.dump(history.model_dump(), f, indent=2, ensure_ascii=False)
+            await async_write_json(self.learned_topics_file, history.model_dump())
             
             logger.info(f"Saved {len(mastered_topics)} learned topics to {self.learned_topics_file}")
             logger.info(f"Total topics learned so far: {history.total_topics_learned}")
@@ -250,12 +252,11 @@ class DeepResearchClient:
         except Exception as e:
             logger.error(f"Failed to save learned topics: {e}")
 
-    def load_learned_topics_history(self, domain: str) -> LearnedTopicsHistory:
+    async def load_learned_topics_history(self, domain: str) -> LearnedTopicsHistory:
         """Load the learned topics history from file"""
         try:
             if self.learned_topics_file.exists():
-                with open(self.learned_topics_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+                data = await async_read_json(self.learned_topics_file)
                 
                 # Validate domain matches
                 if data.get("domain") == domain:
@@ -281,11 +282,12 @@ class DeepResearchClient:
             total_topics_learned=0
         )
     
-    def get_all_learned_topic_names(self, domain: str) -> List[str]:
+    async def get_all_learned_topic_names(self, domain: str) -> List[str]:
         """Get a list of all historically learned topic names"""
-        history = self.load_learned_topics_history(domain)
+        history = await self.load_learned_topics_history(domain)
         return [topic.topic_name for topic in history.learned_topics]
     
+    @traceable
     async def research_topic(self, 
                            query: str, 
                            context: Optional[str] = None,
@@ -382,6 +384,7 @@ class DeepResearchClient:
         
         return "\n".join(prompt_parts)
     
+    @traceable
     async def generate_curriculum(self, 
                                 domain: str, 
                                 current_topics: Optional[List[str]] = None,
@@ -686,6 +689,7 @@ class DeepResearchClient:
         return successful_results
 
 
+    @traceable
     async def generate_revised_curriculum_from_evaluation(self, 
                                                         evaluation_results: Dict[str, Any],
                                                         current_curriculum: Optional[Curriculum] = None,
@@ -732,10 +736,10 @@ class DeepResearchClient:
             
             # Save newly mastered topics to learned topics history
             if mastered_topics:
-                self.save_learned_topics(domain, mastered_topics, accuracy_scores, iteration)
+                await self.save_learned_topics(domain, mastered_topics, accuracy_scores, iteration)
             
             # Load all historical learned topics
-            all_learned_topics = self.get_all_learned_topic_names(domain)
+            all_learned_topics = await self.get_all_learned_topic_names(domain)
             
             # Limit failed questions to maximum 100 as requested
             if len(failed_questions) > 100:

@@ -14,10 +14,12 @@ import uuid
 
 from openai import OpenAI
 from pydantic import BaseModel, Field
+from langsmith import traceable
 
 try:
     from ..config.settings import settings
     from ..utils.logger import get_logger, log_api_call, log_cost, log_error
+    from ..utils.async_file_utils import async_read_json, async_write_json, async_write_text, async_mkdir
     from .fine_tuner import OpenAIFineTuner, FineTuningHyperparameters
     from .evaluator import ModelEvaluator
 except ImportError:
@@ -27,6 +29,7 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from config.settings import settings
     from utils.logger import get_logger, log_api_call, log_cost, log_error
+    from utils.async_file_utils import async_read_json, async_write_json, async_write_text, async_mkdir
     from core.fine_tuner import OpenAIFineTuner, FineTuningHyperparameters
     from core.evaluator import ModelEvaluator
 
@@ -112,11 +115,11 @@ class DPOImprovementEngine:
         logger.info(f"Extracted {len(dpo_examples)} DPO training examples")
         return dpo_examples
     
-    def create_dpo_training_file(self, dpo_examples: List[DPOTrainingExample], 
+    async def create_dpo_training_file(self, dpo_examples: List[DPOTrainingExample], 
                                output_dir: str = "data/training_data",
                                min_examples: int = 10) -> str:
         """Create DPO training file in JSONL format"""
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        await async_mkdir(Path(output_dir))
         
         # Generate filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -142,15 +145,19 @@ class DPOImprovementEngine:
         else:
             examples_to_write = dpo_examples
         
-        # Write DPO examples in JSONL format
-        with open(file_path, 'w', encoding='utf-8') as f:
-            for example in examples_to_write:
-                f.write(json.dumps(example.to_dpo_format()) + '\n')
+        # Build all content first, then write in one operation
+        lines = []
+        for example in examples_to_write:
+            lines.append(json.dumps(example.to_dpo_format()))
+        
+        content = '\n'.join(lines) + '\n'
+        await async_write_text(file_path, content)
         
         logger.info(f"Created DPO training file with {len(examples_to_write)} examples")
         return str(file_path)
     
-    def perform_dpo_fine_tuning(self, 
+    @traceable
+    async def perform_dpo_fine_tuning(self, 
                               training_file_path: str,
                               base_model: str,
                               hyperparameters: Optional[FineTuningHyperparameters] = None) -> str:
@@ -180,7 +187,7 @@ class DPOImprovementEngine:
         
         # Wait for completion
         logger.info(f"Waiting for DPO fine-tuning job completion: {job_result.job_id}")
-        final_result = self.fine_tuner.wait_for_job_completion(job_result.job_id)
+        final_result = await self.fine_tuner.async_wait_for_job_completion(job_result.job_id)
         
         if final_result.status.value == "succeeded":
             if final_result.fine_tuned_model:
@@ -191,6 +198,7 @@ class DPOImprovementEngine:
         else:
             raise Exception(f"DPO fine-tuning failed: {final_result.error}")
     
+    @traceable
     async def improve_model_with_dpo(self, 
                                    evaluation_results_file: str,
                                    training_data_file: str,
@@ -208,8 +216,7 @@ class DPOImprovementEngine:
         logger.info(f"Starting DPO improvement workflow for evaluation: {evaluation_results_file}")
         
         # Step 1: Load evaluation results
-        with open(evaluation_results_file, 'r', encoding='utf-8') as f:
-            evaluation_results = json.load(f)
+        evaluation_results = await async_read_json(evaluation_results_file)
         
         original_model = evaluation_results["file_metadata"]["model_tested"]
         original_accuracy = evaluation_results["file_metadata"]["overall_accuracy"]
@@ -237,17 +244,16 @@ class DPOImprovementEngine:
             )
         
         # Step 3: Create DPO training file
-        dpo_training_file = self.create_dpo_training_file(dpo_examples)
+        dpo_training_file = await self.create_dpo_training_file(dpo_examples)
         
         # Step 4: Perform DPO fine-tuning
-        dpo_model = self.perform_dpo_fine_tuning(dpo_training_file, original_model)
+        dpo_model = await self.perform_dpo_fine_tuning(dpo_training_file, original_model)
         
         # Step 5: Re-evaluate the DPO model
         logger.info(f"Re-evaluating DPO model: {dpo_model}")
         
         # Load training data for evaluation
-        with open(training_data_file, 'r', encoding='utf-8') as f:
-            training_data_json = json.load(f)
+        training_data_json = await async_read_json(training_data_file)
         
         # Create a new evaluator with the DPO model
         from .training_data_generator import CurriculumTrainingData
@@ -265,16 +271,14 @@ class DPOImprovementEngine:
         eval_filename = dpo_evaluator.save_evaluation_results(evaluation_summary)
         
         # Load the saved results to get the expected JSON structure
-        with open(eval_filename, 'r', encoding='utf-8') as f:
-            improved_results = json.load(f)
+        improved_results = await async_read_json(eval_filename)
         
         # Step 6: Save improved evaluation results
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        await async_mkdir(Path(output_dir))
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         improved_eval_file = Path(output_dir) / f"evaluation_results_dpo_{timestamp}.json"
         
-        with open(improved_eval_file, 'w', encoding='utf-8') as f:
-            json.dump(improved_results, f, indent=2, ensure_ascii=False)
+        await async_write_json(improved_eval_file, improved_results)
         
         # Step 7: Calculate improvement
         improved_accuracy = improved_results["file_metadata"]["overall_accuracy"]
@@ -304,7 +308,7 @@ class DPOImprovementEngine:
         
         return result
     
-    def save_improvement_summary(self, result: DPOImprovementResult, 
+    async def save_improvement_summary(self, result: DPOImprovementResult, 
                                output_file: str = "dpo_improvement_summary.json") -> None:
         """Save improvement summary to JSON file"""
         summary = {
@@ -330,8 +334,7 @@ class DPOImprovementEngine:
             }
         }
         
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(summary, f, indent=2, ensure_ascii=False)
+        await async_write_json(output_file, summary)
         
         logger.info(f"Improvement summary saved to: {output_file}")
 
@@ -366,7 +369,7 @@ async def main():
     )
     
     # Save improvement summary
-    engine.save_improvement_summary(result)
+    await engine.save_improvement_summary(result)
     
     print(f"DPO improvement completed!")
     print(f"Original accuracy: {result.original_accuracy:.2%}")

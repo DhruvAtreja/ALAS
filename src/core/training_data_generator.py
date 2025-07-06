@@ -11,9 +11,11 @@ from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel
+from langsmith import traceable
 
 from .deep_research_client import DeepResearchClient, create_deep_research_client, Curriculum, CurriculumTopic
 from ..utils.logger import get_logger, log_cost, log_error
+from ..utils.async_file_utils import async_write_json, async_write_text, async_append_text
 from ..config.settings import settings
 
 logger = get_logger(__name__)
@@ -57,6 +59,7 @@ class TrainingDataGenerator:
         self.questions_per_topic = questions_per_topic
         self.semaphore = asyncio.Semaphore(max_concurrent)
         
+    @traceable
     async def generate_topic_questions(self, topic: CurriculumTopic, domain: str) -> TopicTrainingData:
         """Generate training questions for a single topic"""
         
@@ -226,6 +229,7 @@ Requirements:
             logger.error(f"Error parsing questions for {topic.name}: {e}")
             return []
     
+    @traceable
     async def generate_curriculum_training_data(self, curriculum: Curriculum) -> CurriculumTrainingData:
         """Generate training data for all topics in a curriculum"""
         
@@ -288,7 +292,7 @@ Requirements:
         
         return training_data
     
-    def save_training_data(self, training_data: CurriculumTrainingData, filename: Optional[str] = None) -> str:
+    async def save_training_data(self, training_data: CurriculumTrainingData, filename: Optional[str] = None) -> str:
         """Save training data to JSON file"""
         
         if filename is None:
@@ -314,8 +318,7 @@ Requirements:
             }
             
             # Save to file
-            with open(filename, 'w', encoding='utf-8') as f:
-                json.dump(final_data, f, indent=2, ensure_ascii=False)
+            await async_write_json(filename, final_data)
             
             logger.info(f"✅ Training data saved to {filename}")
             logger.info(f"  - File size: {Path(filename).stat().st_size / 1024:.1f} KB")
@@ -326,7 +329,7 @@ Requirements:
             logger.error(f"Failed to save training data: {e}")
             raise
     
-    def export_for_openai_finetuning(self, training_data: CurriculumTrainingData, filename: Optional[str] = None) -> str:
+    async def export_for_openai_finetuning(self, training_data: CurriculumTrainingData, filename: Optional[str] = None) -> str:
         """Export training data in OpenAI fine-tuning format (JSONL)"""
         
         if filename is None:
@@ -334,28 +337,33 @@ Requirements:
             filename = f"openai_training_{training_data.domain.lower().replace(' ', '_')}_{timestamp}.jsonl"
         
         try:
-            with open(filename, 'w', encoding='utf-8') as f:
-                for topic in training_data.topics:
-                    for question in topic.questions:
-                        # Format for OpenAI fine-tuning
-                        openai_example = {
-                            "messages": [
-                                {
-                                    "role": "system", 
-                                    "content": f"Answer the question"
-                                },
-                                {
-                                    "role": "user", 
-                                    "content": question.question
-                                },
-                                {
-                                    "role": "assistant", 
-                                    "content": question.answer
-                                }
-                            ]
-                        }
-                        
-                        f.write(json.dumps(openai_example, ensure_ascii=False) + '\n')
+            # Build all content first, then write in one operation
+            lines = []
+            for topic in training_data.topics:
+                for question in topic.questions:
+                    # Format for OpenAI fine-tuning
+                    openai_example = {
+                        "messages": [
+                            {
+                                "role": "system", 
+                                "content": f"Answer the question"
+                            },
+                            {
+                                "role": "user", 
+                                "content": question.question
+                            },
+                            {
+                                "role": "assistant", 
+                                "content": question.answer
+                            }
+                        ]
+                    }
+                    
+                    lines.append(json.dumps(openai_example, ensure_ascii=False))
+            
+            # Write all lines at once
+            content = '\n'.join(lines) + '\n'
+            await async_write_text(filename, content)
             
             logger.info(f"✅ OpenAI fine-tuning data exported to {filename}")
             return filename

@@ -8,8 +8,8 @@ from datetime import datetime
 import uuid
 
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langsmith import traceable
 from langchain_core.runnables import RunnableConfig
 
 try:
@@ -49,7 +49,6 @@ class SelfLearningWorkflow:
     
     def __init__(self):
         self.builder = StateGraph(LearningAgentState)
-        self.checkpointer = MemorySaver()  # Will be replaced with Redis in production
         self.setup_nodes()
         self.setup_edges()
         self.graph = None
@@ -88,8 +87,10 @@ class SelfLearningWorkflow:
         )
         
     def compile(self):
-        """Compile the graph"""
-        self.graph = self.builder.compile(checkpointer=self.checkpointer)
+        """Compile the graph with automatic checkpointing"""
+        # Let LangGraph handle checkpointing automatically - don't manually provide checkpointer
+        # This avoids the thread context loss issues mentioned in GitHub discussions
+        self.graph = self.builder.compile()
         return self.graph
         
     # Node implementations
@@ -289,6 +290,7 @@ class SelfLearningWorkflow:
             logger.info("Learning objectives achieved or limits reached")
             return "complete"
             
+    @traceable
     async def run(self, domain: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Execute the learning workflow for a domain"""
         if not self.graph:

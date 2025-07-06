@@ -113,6 +113,12 @@ class Settings(BaseSettings):
 # Singleton instance
 settings = Settings()
 
+# Initialize LangSmith tracing
+if settings.langsmith.api_key and settings.langsmith.tracing_v2:
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = settings.langsmith.api_key
+    os.environ["LANGCHAIN_PROJECT"] = settings.langsmith.project
+
 
 # Helper function to get nested config
 def get_config(path: str) -> Any:

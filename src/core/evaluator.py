@@ -13,6 +13,7 @@ from pathlib import Path
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel
+from langsmith import traceable
 
 from .deep_research_client import create_deep_research_client
 from .training_data_generator import TrainingQuestion, TopicTrainingData, CurriculumTrainingData
@@ -85,6 +86,7 @@ class ModelEvaluator:
         self.openai_client = AsyncOpenAI(api_key=settings.openai.api_key)
         self.deep_research_client = create_deep_research_client()
         
+    @traceable
     async def get_model_answer(self, question: str, topic_name: str) -> str:
         """Get the model's answer to a question"""
         
@@ -424,6 +426,7 @@ class ModelEvaluator:
         
         return fallback_evaluations
     
+    @traceable
     async def evaluate_training_data(self, training_data: CurriculumTrainingData) -> EvaluationSummary:
         """Evaluate model performance on complete training data"""
         

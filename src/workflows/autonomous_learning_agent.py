@@ -11,8 +11,8 @@ from pathlib import Path
 import uuid
 
 from langgraph.graph import StateGraph, END, START
-from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel, Field
+from langsmith import traceable
 
 try:
     from ..core.deep_research_client import create_deep_research_client, Curriculum
@@ -23,19 +23,41 @@ try:
     from ..core.dpo_improvement import DPOImprovementEngine
     from ..config.settings import settings
     from ..utils.logger import get_logger
+    from ..utils.async_file_utils import async_read_json, async_write_json, async_mkdir
 except ImportError:
-    # Fallback for when running directly
+    # Fallback for when running directly or in LangGraph Studio
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from core.deep_research_client import create_deep_research_client, Curriculum
-    from core.training_data_generator import create_training_data_generator, CurriculumTrainingData
-    from core.fine_tuner import create_fine_tuner, FineTuningHyperparameters
-    from core.evaluator import create_model_evaluator
-    from core.curriculum_revision import revise_curriculum_from_dpo_results
-    from core.dpo_improvement import DPOImprovementEngine
-    from config.settings import settings
-    from utils.logger import get_logger
+    
+    try:
+        from core.deep_research_client import create_deep_research_client, Curriculum
+        from core.training_data_generator import create_training_data_generator, CurriculumTrainingData
+        from core.fine_tuner import create_fine_tuner, FineTuningHyperparameters
+        from core.evaluator import create_model_evaluator
+        from core.curriculum_revision import revise_curriculum_from_dpo_results
+        from core.dpo_improvement import DPOImprovementEngine
+        from config.settings import settings
+        from utils.logger import get_logger
+        from utils.async_file_utils import async_read_json, async_write_json, async_mkdir
+    except ImportError:
+        # Final fallback for LangGraph Studio - create minimal settings
+        class FallbackSettings:
+            class OpenAI:
+                fine_tuning_model = "gpt-4.1-2025-04-14"
+            openai = OpenAI()
+        
+        settings = FallbackSettings()
+        
+        # Import what we can
+        from core.deep_research_client import create_deep_research_client, Curriculum
+        from core.training_data_generator import create_training_data_generator, CurriculumTrainingData
+        from core.fine_tuner import create_fine_tuner, FineTuningHyperparameters
+        from core.evaluator import create_model_evaluator
+        from core.curriculum_revision import revise_curriculum_from_dpo_results
+        from core.dpo_improvement import DPOImprovementEngine
+        from utils.logger import get_logger
+        from utils.async_file_utils import async_read_json, async_write_json, async_mkdir
 
 logger = get_logger(__name__)
 
@@ -95,17 +117,51 @@ class AutonomousLearningAgent:
     def __init__(self, max_iterations: int = 5):
         self.max_iterations = max_iterations
         self.builder = StateGraph(AutonomousLearningState)
-        self.checkpointer = MemorySaver()
         self.setup_nodes()
         self.setup_edges()
         self.graph = None
         
-        # Initialize components
-        self.deep_research_client = create_deep_research_client()
-        self.training_data_generator = create_training_data_generator()
-        self.fine_tuner = create_fine_tuner()
-        self.evaluator = create_model_evaluator()
-        self.dpo_engine = DPOImprovementEngine()
+        # Initialize components lazily to avoid storing them in state
+        self._deep_research_client = None
+        self._training_data_generator = None
+        self._fine_tuner = None
+        self._evaluator = None
+        self._dpo_engine = None
+    
+    @property
+    def deep_research_client(self):
+        """Lazy initialization of deep research client"""
+        if self._deep_research_client is None:
+            self._deep_research_client = create_deep_research_client()
+        return self._deep_research_client
+    
+    @property
+    def training_data_generator(self):
+        """Lazy initialization of training data generator"""
+        if self._training_data_generator is None:
+            self._training_data_generator = create_training_data_generator()
+        return self._training_data_generator
+    
+    @property
+    def fine_tuner(self):
+        """Lazy initialization of fine tuner"""
+        if self._fine_tuner is None:
+            self._fine_tuner = create_fine_tuner()
+        return self._fine_tuner
+    
+    @property
+    def evaluator(self):
+        """Lazy initialization of evaluator"""
+        if self._evaluator is None:
+            self._evaluator = create_model_evaluator()
+        return self._evaluator
+    
+    @property
+    def dpo_engine(self):
+        """Lazy initialization of DPO engine"""
+        if self._dpo_engine is None:
+            self._dpo_engine = DPOImprovementEngine()
+        return self._dpo_engine
         
     def setup_nodes(self):
         """Setup all workflow nodes"""
@@ -146,19 +202,31 @@ class AutonomousLearningAgent:
         self.builder.add_edge("finalize", END)
     
     def compile(self):
-        """Compile the workflow graph"""
-        self.graph = self.builder.compile(checkpointer=self.checkpointer)
+        """Compile the workflow graph with automatic checkpointing"""
+        # Let LangGraph handle checkpointing automatically - don't manually provide checkpointer
+        # This avoids the thread context loss issues mentioned in GitHub discussions
+        self.graph = self.builder.compile()
         return self.graph
     
     # Node implementations
     
+    @traceable
     async def initialize_node(self, state: AutonomousLearningState) -> Dict[str, Any]:
         """Initialize the learning session"""
-        domain = "Self-Adapting Language Models, research paper"
+        # Use domain from state if available, otherwise use default
+        domain = state.get('domain', "Self-Adapting Language Models, research paper")
         logger.info(f"🚀 Initializing autonomous learning for domain: {domain}")
+        logger.info(f"📊 Current state keys: {list(state.keys())}")
         
         current_time = datetime.now().isoformat()
         session_id = state.get('session_id', str(uuid.uuid4()))
+        
+        # Get model with fallback
+        base_model = getattr(settings, 'openai', None)
+        if base_model:
+            base_model = getattr(base_model, 'fine_tuning_model', 'gpt-4.1-2025-04-14')
+        else:
+            base_model = 'gpt-4.1-2025-04-14'
         
         return {
             "domain": domain,
@@ -166,7 +234,7 @@ class AutonomousLearningAgent:
             "current_iteration": 1,
             "max_iterations": self.max_iterations,
             "iterations": [],
-            "base_model": settings.openai.fine_tuning_model,
+            "base_model": base_model,
             "current_step": "initialization",
             "overall_status": "running",
             "total_cost": 0.0,
@@ -176,6 +244,7 @@ class AutonomousLearningAgent:
             "completed_at": None
         }
     
+    @traceable
     async def generate_curriculum_node(self, state: AutonomousLearningState) -> Dict[str, Any]:
         """Generate or revise curriculum"""
         iteration = state["current_iteration"]
@@ -195,12 +264,11 @@ class AutonomousLearningAgent:
                 # Use revised curriculum from previous iteration
                 curriculum_file = state.get("current_revised_curriculum_file")
                 if curriculum_file and Path(curriculum_file).exists():
-                    with open(curriculum_file, 'r') as f:
-                        curriculum_data = json.load(f)
-                        if "revised_curriculum" in curriculum_data:
-                            curriculum = Curriculum(**curriculum_data["revised_curriculum"])
-                        else:
-                            curriculum = Curriculum(**curriculum_data)
+                    curriculum_data = await async_read_json(curriculum_file)
+                    if "revised_curriculum" in curriculum_data:
+                        curriculum = Curriculum(**curriculum_data["revised_curriculum"])
+                    else:
+                        curriculum = Curriculum(**curriculum_data)
                 else:
                     raise ValueError("No revised curriculum found for subsequent iteration")
             
@@ -211,11 +279,10 @@ class AutonomousLearningAgent:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             curriculum_file = f"data/curricula/curriculum_iter{iteration}_{timestamp}.json"
             
-            # Ensure directory exists
-            Path(curriculum_file).parent.mkdir(parents=True, exist_ok=True)
+            # Ensure directory exists using async mkdir
+            await async_mkdir(Path(curriculum_file).parent)
             
-            with open(curriculum_file, 'w') as f:
-                json.dump(curriculum.model_dump(), f, indent=2)
+            await async_write_json(curriculum_file, curriculum.model_dump())
             
             logger.info(f"✅ Curriculum generated: {curriculum.metadata.total_topics} topics")
             
@@ -234,6 +301,7 @@ class AutonomousLearningAgent:
                 "last_updated": datetime.now().isoformat()
             }
     
+    @traceable
     async def generate_training_data_node(self, state: AutonomousLearningState) -> Dict[str, Any]:
         """Generate training data from curriculum"""
         iteration = state["current_iteration"]
@@ -247,9 +315,8 @@ class AutonomousLearningAgent:
                 raise ValueError("No curriculum file available")
             
             # Load curriculum from file
-            with open(curriculum_file, 'r') as f:
-                curriculum_data = json.load(f)
-                curriculum = Curriculum(**curriculum_data)
+            curriculum_data = await async_read_json(curriculum_file)
+            curriculum = Curriculum(**curriculum_data)
             
             # Generate training data using the existing method
             training_data = await self.training_data_generator.generate_curriculum_training_data(curriculum)
@@ -258,7 +325,7 @@ class AutonomousLearningAgent:
                 raise ValueError("Training data generation failed")
             
             # Save training data
-            output_file = self.training_data_generator.save_training_data(training_data)
+            output_file = await self.training_data_generator.save_training_data(training_data)
             
             logger.info(f"✅ Training data generated: {training_data.total_questions} questions")
             
@@ -277,6 +344,7 @@ class AutonomousLearningAgent:
                 "last_updated": datetime.now().isoformat()
             }
     
+    @traceable
     async def sft_training_node(self, state: AutonomousLearningState) -> Dict[str, Any]:
         """Supervised fine-tuning"""
         iteration = state["current_iteration"]
@@ -293,11 +361,10 @@ class AutonomousLearningAgent:
             openai_file = training_file.replace('.json', '_openai.jsonl')
             if not Path(openai_file).exists():
                 # Load training data and export for OpenAI
-                with open(training_file, 'r') as f:
-                    data = json.load(f)
-                    training_data = CurriculumTrainingData(**data["training_data"])
+                data = await async_read_json(training_file)
+                training_data = CurriculumTrainingData(**data["training_data"])
                 
-                openai_file = self.training_data_generator.export_for_openai_finetuning(training_data)
+                openai_file = await self.training_data_generator.export_for_openai_finetuning(training_data)
             
             # Get base model (first iteration uses base model, subsequent use previous SFT model)
             if iteration == 1:
@@ -307,7 +374,7 @@ class AutonomousLearningAgent:
                 base_model = previous_model if previous_model else state["base_model"]
             
             # Start fine-tuning
-            result = self.fine_tuner.fine_tune_from_file(
+            result = await self.fine_tuner.fine_tune_from_file(
                 training_file_path=openai_file,
                 model=base_model,
                 hyperparameters=FineTuningHyperparameters(n_epochs=3),
@@ -335,6 +402,7 @@ class AutonomousLearningAgent:
                 "last_updated": datetime.now().isoformat()
             }
     
+    @traceable
     async def sft_evaluation_node(self, state: AutonomousLearningState) -> Dict[str, Any]:
         """Evaluate SFT model"""
         iteration = state["current_iteration"]
@@ -349,9 +417,8 @@ class AutonomousLearningAgent:
                 raise ValueError("Missing model ID or training file for evaluation")
             
             # Load training data for evaluation
-            with open(training_file, 'r') as f:
-                data = json.load(f)
-                training_data = CurriculumTrainingData(**data["training_data"])
+            data = await async_read_json(training_file)
+            training_data = CurriculumTrainingData(**data["training_data"])
             
             # Create evaluator for this specific model
             evaluator = create_model_evaluator(model_to_test=model_id)
@@ -379,6 +446,7 @@ class AutonomousLearningAgent:
                 "last_updated": datetime.now().isoformat()
             }
     
+    @traceable
     async def dpo_training_node(self, state: AutonomousLearningState) -> Dict[str, Any]:
         """DPO training on incorrect answers"""
         iteration = state["current_iteration"]
@@ -393,8 +461,7 @@ class AutonomousLearningAgent:
                 raise ValueError("Missing evaluation file or SFT model for DPO training")
             
             # Load evaluation results
-            with open(sft_eval_file, 'r') as f:
-                eval_data = json.load(f)
+            eval_data = await async_read_json(sft_eval_file)
             
             # Generate DPO data from evaluation results using correct method
             dpo_examples = self.dpo_engine.extract_wrong_answers(eval_data)
@@ -410,10 +477,10 @@ class AutonomousLearningAgent:
                 }
             
             # Create DPO training file
-            dpo_file = self.dpo_engine.create_dpo_training_file(dpo_examples)
+            dpo_file = await self.dpo_engine.create_dpo_training_file(dpo_examples)
             
             # Start DPO fine-tuning using the correct method
-            dpo_model = self.dpo_engine.perform_dpo_fine_tuning(
+            dpo_model = await self.dpo_engine.perform_dpo_fine_tuning(
                 training_file_path=dpo_file,
                 base_model=sft_model_id
             )
@@ -437,6 +504,7 @@ class AutonomousLearningAgent:
                 "last_updated": datetime.now().isoformat()
             }
     
+    @traceable
     async def dpo_evaluation_node(self, state: AutonomousLearningState) -> Dict[str, Any]:
         """Evaluate DPO model"""
         iteration = state["current_iteration"]
@@ -451,9 +519,8 @@ class AutonomousLearningAgent:
                 raise ValueError("Missing model ID or training file for DPO evaluation")
             
             # Load training data for evaluation
-            with open(training_file, 'r') as f:
-                data = json.load(f)
-                training_data = CurriculumTrainingData(**data["training_data"])
+            data = await async_read_json(training_file)
+            training_data = CurriculumTrainingData(**data["training_data"])
             
             # Create evaluator for this specific model
             evaluator = create_model_evaluator(model_to_test=model_id)
@@ -465,8 +532,8 @@ class AutonomousLearningAgent:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             dpo_eval_file = f"data/evaluations/evaluation_results_dpo_{timestamp}.json"
             
-            # Ensure directory exists
-            Path(dpo_eval_file).parent.mkdir(parents=True, exist_ok=True)
+            # Ensure directory exists using async mkdir
+            await async_mkdir(Path(dpo_eval_file).parent)
             
             eval_file = evaluator.save_evaluation_results(eval_result, dpo_eval_file)
             
@@ -487,6 +554,7 @@ class AutonomousLearningAgent:
                 "last_updated": datetime.now().isoformat()
             }
     
+    @traceable
     async def revise_curriculum_node(self, state: AutonomousLearningState) -> Dict[str, Any]:
         """Revise curriculum based on DPO evaluation results"""
         iteration = state["current_iteration"]
@@ -515,7 +583,7 @@ class AutonomousLearningAgent:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             revised_file = f"data/curricula/revised_curriculum_iter{iteration}_{timestamp}.json"
             
-            Path(revised_file).parent.mkdir(parents=True, exist_ok=True)
+            await async_mkdir(Path(revised_file).parent)
             
             revision_data = {
                 "iteration": iteration,
@@ -528,8 +596,7 @@ class AutonomousLearningAgent:
                 "revised_curriculum": revision_result.revised_curriculum.model_dump()
             }
             
-            with open(revised_file, 'w') as f:
-                json.dump(revision_data, f, indent=2)
+            await async_write_json(revised_file, revision_data)
             
             # Save iteration summary
             current_iteration_data = {
@@ -587,6 +654,7 @@ class AutonomousLearningAgent:
         logger.info(f"🔄 Continuing to iteration {current_iteration}")
         return "continue"
     
+    @traceable
     async def finalize_node(self, state: AutonomousLearningState) -> Dict[str, Any]:
         """Finalize the learning session"""
         logger.info("🏆 Finalizing autonomous learning session")
@@ -607,10 +675,9 @@ class AutonomousLearningAgent:
         
         # Save session summary
         summary_file = f"data/sessions/session_summary_{state['session_id']}.json"
-        Path(summary_file).parent.mkdir(parents=True, exist_ok=True)
+        await async_mkdir(Path(summary_file).parent)
         
-        with open(summary_file, 'w') as f:
-            json.dump(summary, f, indent=2)
+        await async_write_json(summary_file, summary)
         
         logger.info(f"✅ Session completed! Summary saved to: {summary_file}")
         logger.info(f"📊 Total iterations: {summary['completed_iterations']}")
@@ -623,6 +690,7 @@ class AutonomousLearningAgent:
             "last_updated": current_time
         }
     
+    @traceable
     async def run(self, domain: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """Run the autonomous learning workflow"""
         if not self.graph:
