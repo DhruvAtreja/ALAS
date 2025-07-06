@@ -1,10 +1,6 @@
 # ALAS: Autonomous Learning Agent System
 
-An intelligent self-learning AI agent system inspired by the [SEAL paper](https://arxiv.org/html/2506.10943v1) that continuously refines itself through iterative curriculum generation, fine-tuning, evaluation, and revision.
-
-## 🌟 Overview
-
-ALAS addresses the challenge of AI models having fixed knowledge cutoffs by creating autonomous agents that can:
+An intelligent self-learning AI agent system that addresses the challenge of AI models having fixed knowledge cutoffs for rapidly evolving domains by creating autonomous agents that can:
 
 - **Generate learning curricula** using OpenAI's Deep Research API
 - **Create training data** through intelligent research and question generation
@@ -13,9 +9,11 @@ ALAS addresses the challenge of AI models having fixed knowledge cutoffs by crea
 - **Revise curricula** based on performance gaps and mastery
 - **Track learning history** across multiple iterations
 
+I came across this problem when trying to using models like sonnet 4 and gpt 4.1 to code AI agents, which is a rapidly evolving field and hence the models didn't even know about newer models like o3, let alone the current best practices in building ai agents. Along with overcoming the problem of fixed knowledge cutoffs for models like gpt 4.1, we can also get plug and play APIs with highly specialized knowledge for a particular domain
+
 The system is particularly valuable for rapidly evolving domains where traditional models quickly become outdated.
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
 graph TD
@@ -40,15 +38,15 @@ graph TD
 
 ### Core Components
 
-- **🔬 Deep Research Client**: Leverages OpenAI's o3-deep-research for intelligent curriculum generation
-- **📚 Training Data Generator**: Creates diverse Q&A pairs with parallel processing (50 concurrent requests)
-- **🔧 Fine-Tuner**: Manages OpenAI fine-tuning jobs with SFT and DPO methods
-- **📊 Evaluator**: Comprehensive model evaluation with category-based analysis
-- **🎯 DPO Engine**: Improves models using Direct Preference Optimization on incorrect answers
-- **🔄 Curriculum Reviser**: Adapts learning paths based on performance with historical context
-- **🌐 LangGraph Orchestrator**: Manages the complete workflow with state persistence
+- ** Deep Research Client**: Leverages OpenAI's o3-deep-research for intelligent curriculum generation
+- ** Training Data Generator**: Creates diverse Q&A pairs with parallel processing (50 concurrent requests)
+- ** Fine-Tuner**: Manages OpenAI fine-tuning jobs with SFT and DPO methods
+- ** Evaluator**: Comprehensive model evaluation with category-based analysis
+- ** DPO Engine**: Improves models using Direct Preference Optimization on incorrect answers
+- ** Curriculum Reviser**: Adapts learning paths based on performance with historical context
+- ** LangGraph Orchestrator**: Manages the complete workflow with state persistence
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -139,7 +137,7 @@ result = fine_tuner.fine_tune_from_file(
 )
 ```
 
-## 🎮 LangGraph Studio Integration
+## LangGraph Studio Integration
 
 ALAS includes full LangGraph Studio support for visual workflow management.
 
@@ -162,19 +160,19 @@ ALAS includes full LangGraph Studio support for visual workflow management.
 
 The workflow will be available as the "agent" graph with full visual debugging and state inspection.
 
-## 📊 Learning Process
+## Learning Process
 
 ### Iteration Workflow
 
 Each learning iteration follows this pattern:
 
-1. **📚 Curriculum Generation**: Create or revise learning topics based on domain and performance
-2. **📝 Training Data Creation**: Generate diverse Q&A pairs using Deep Research API
-3. **🔧 Supervised Fine-Tuning**: Train model on correct examples
-4. **📊 SFT Evaluation**: Test model performance and identify weak areas
-5. **🎯 DPO Training**: Improve model using preference optimization on incorrect answers
-6. **📈 DPO Evaluation**: Re-evaluate improved model
-7. **🔄 Curriculum Revision**: Update learning plan based on results
+1. ** Curriculum Generation**: Create or revise learning topics based on domain and performance
+2. ** Training Data Creation**: Generate diverse Q&A pairs using Deep Research API
+3. ** Supervised Fine-Tuning**: Train model on correct examples
+4. ** SFT Evaluation**: Test model performance and identify weak areas
+5. ** DPO Training**: Improve model using preference optimization on incorrect answers
+6. ** DPO Evaluation**: Re-evaluate improved model
+7. ** Curriculum Revision**: Update learning plan based on results
 
 ### Historical Learning Tracking
 
@@ -210,7 +208,7 @@ The evaluation system provides detailed analysis:
 }
 ```
 
-## 💰 Cost Management
+## Cost Management
 
 ### Estimated Costs (per iteration)
 
@@ -231,7 +229,7 @@ The evaluation system provides detailed analysis:
 - Smart curriculum revision to avoid redundant learning
 - Efficient evaluation with targeted question generation
 
-## 🔧 Configuration
+## Configuration
 
 ### Settings
 
@@ -280,7 +278,7 @@ ALAS/
 └── learned_topics.json            # Historical learning tracker
 ```
 
-## 🧪 Testing
+## Testing
 
 Run individual component tests:
 
@@ -298,7 +296,7 @@ python test_dpo_improvement.py
 python test_evaluation.py
 ```
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -306,22 +304,11 @@ python test_evaluation.py
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Inspired by the [SEAL paper](https://arxiv.org/html/2506.10943v1) on self-adapting language models
 - Built with [OpenAI's APIs](https://platform.openai.com/) and [LangGraph](https://langchain-ai.github.io/langgraph/)
 - Uses [LangSmith](https://docs.smith.langchain.com/) for monitoring and observability
-
-## 📚 Further Reading
-
-- [SEAL Paper: Self-Adapting Language Models](https://arxiv.org/html/2506.10943v1)
-- [OpenAI Fine-Tuning Guide](https://platform.openai.com/docs/guides/fine-tuning)
-- [Direct Preference Optimization](https://platform.openai.com/docs/guides/direct-preference-optimization)
-- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
 
 ---
 
