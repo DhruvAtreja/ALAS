@@ -13,6 +13,10 @@ I came across this problem when trying to using models like sonnet 4 and gpt 4.1
 
 The system is particularly valuable for rapidly evolving domains where traditional models quickly become outdated.
 
+More things to add:
+1. Add finetuning for Deepseek r1
+2. Setup periodic jobs to stay upto date latest information
+
 ## Architecture
 
 ```mermaid
