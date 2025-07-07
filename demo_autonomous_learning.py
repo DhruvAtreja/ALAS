@@ -20,7 +20,18 @@ async def main():
     
     try:
         # Configuration
-        domain = "Self-Adapting Language Models, research paper"
+        domain = '''Excel.js apis for ms office excel plugin. Learn how to use the apis to manipulate excel files and read and write data to excel files. Must learn the following topics:
+        1. Reading cells and ranges. Including values, formulas, and formatting.
+        2. Writing cells and ranges. Including values, formulas, and formatting.
+        3. Inserting and deleting rows and columns.
+        4. Await excel.run()
+        5. range.load and other range methods.
+        6. context.sync() and its usage and importance.
+        7. search over ranges.
+        8. any other important excel.js apis that are not mentioned here.
+        9. concepts of excel.js and its usage in ms office excel plugin.
+        '''
+
         max_iterations = 3  # Reduced for demo
         session_id = "demo_session_001"
         

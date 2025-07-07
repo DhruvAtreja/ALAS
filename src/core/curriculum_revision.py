@@ -168,6 +168,32 @@ class CurriculumRevisionEngine:
         
         return analysis
     
+    def _create_safe_filename(self, domain: str, timestamp: str, file_type: str = "curriculum_revision") -> str:
+        """Create a safe filename from domain name"""
+        import hashlib
+        import re
+        
+        # Clean domain: remove problematic characters and limit length
+        clean_domain = re.sub(r'[^\w\s-]', '', domain)  # Remove non-alphanumeric chars except spaces and hyphens
+        clean_domain = re.sub(r'\s+', '_', clean_domain)  # Replace spaces with underscores
+        clean_domain = clean_domain.lower().strip('_')  # Convert to lowercase and strip edge underscores
+        
+        # If domain is still too long, truncate and add hash
+        if len(clean_domain) > 30:
+            # Use first 20 chars + hash of full domain
+            domain_hash = hashlib.md5(domain.encode()).hexdigest()[:8]
+            clean_domain = clean_domain[:20] + "_" + domain_hash
+        
+        # Create filename ensuring it's under filesystem limits
+        filename = f"{file_type}_{clean_domain}_{timestamp}.json"
+        
+        # Final safety check - if still too long, use hash only
+        if len(filename) > 100:
+            domain_hash = hashlib.md5(domain.encode()).hexdigest()[:16]
+            filename = f"{file_type}_{domain_hash}_{timestamp}.json"
+        
+        return filename
+
     def save_revision_results(self, 
                             revision_result: CurriculumRevisionResult, 
                             evaluation_results: Dict[str, Any],
@@ -187,8 +213,7 @@ class CurriculumRevisionEngine:
         if not filename:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             domain = evaluation_results.get("evaluation_results", {}).get("domain", "unknown")
-            domain_clean = domain.lower().replace(" ", "_").replace("-", "_")
-            filename = f"curriculum_revision_{domain_clean}_{timestamp}.json"
+            filename = self._create_safe_filename(domain, timestamp, "curriculum_revision")
         
         try:
             # Convert Pydantic models to dicts for JSON serialization

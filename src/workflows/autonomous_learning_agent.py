@@ -309,14 +309,21 @@ class AutonomousLearningAgent:
         
         try:
             current_time = datetime.now().isoformat()
-            curriculum_file = state.get("current_curriculum_file")
+            
+            # For subsequent iterations, use revised curriculum if available
+            curriculum_file = state.get("current_revised_curriculum_file") or state.get("current_curriculum_file")
             
             if not curriculum_file:
                 raise ValueError("No curriculum file available")
             
             # Load curriculum from file
             curriculum_data = await async_read_json(curriculum_file)
-            curriculum = Curriculum(**curriculum_data)
+            
+            # Handle revised curriculum format
+            if "revised_curriculum" in curriculum_data:
+                curriculum = Curriculum(**curriculum_data["revised_curriculum"])
+            else:
+                curriculum = Curriculum(**curriculum_data)
             
             # Generate training data using the existing method
             training_data = await self.training_data_generator.generate_curriculum_training_data(curriculum)
@@ -489,6 +496,7 @@ class AutonomousLearningAgent:
             
             return {
                 "current_dpo_model_id": dpo_model,
+                "current_sft_model_id": dpo_model,
                 "current_dpo_data_file": dpo_file,
                 "current_step": "dpo_training",
                 "last_updated": current_time,
@@ -705,7 +713,10 @@ class AutonomousLearningAgent:
             "max_iterations": self.max_iterations
         }
         
-        config = {"configurable": {"thread_id": session_id}}
+        config = {
+            "configurable": {"thread_id": session_id},
+            "recursion_limit": 1000  # Allow for multiple iterations with ~8 steps each
+        }
         
         logger.info(f"🚀 Starting autonomous learning for: {domain}")
         logger.info(f"📋 Session ID: {session_id}")

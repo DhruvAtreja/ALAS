@@ -282,7 +282,7 @@ Examples:
         if not args.no_summary:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             summary_file = f"dpo_improvement_summary_{timestamp}.json"
-            engine.save_improvement_summary(result, summary_file)
+            await engine.save_improvement_summary(result, summary_file)
             print(f"📋 Improvement summary saved to: {summary_file}")
         
         print("🏁 DPO improvement workflow completed successfully!")

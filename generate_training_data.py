@@ -24,8 +24,8 @@ logger = get_logger(__name__)
 async def generate_training_data_from_curriculum(
     curriculum_file: str,
     output_file: Optional[str] = None,
-    questions_per_topic: int = 10,
-    max_concurrent: int = 3,
+    questions_per_topic: int = 15,
+    max_concurrent: int = 50,
     export_openai: bool = True
 ):
     """
@@ -174,8 +174,8 @@ Examples:
             json.dump({"curriculum": curriculum_data}, f, indent=2)
         
         args.curriculum_file = test_file
-        args.questions = 10
-        args.concurrent = 2
+        args.questions = 20
+        args.concurrent = 50
     
     # Run generation
     try:

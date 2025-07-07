@@ -540,13 +540,43 @@ class ModelEvaluator:
         
         return difficulty_stats
     
+    def _create_safe_filename(self, domain: str, model_name: str, timestamp: str, file_type: str = "evaluation_results") -> str:
+        """Create a safe filename from domain name and model name"""
+        import hashlib
+        import re
+        
+        # Clean domain: remove problematic characters and limit length
+        clean_domain = re.sub(r'[^\w\s-]', '', domain)  # Remove non-alphanumeric chars except spaces and hyphens
+        clean_domain = re.sub(r'\s+', '_', clean_domain)  # Replace spaces with underscores
+        clean_domain = clean_domain.lower().strip('_')  # Convert to lowercase and strip edge underscores
+        
+        # Clean model name
+        clean_model = re.sub(r'[^\w\s-]', '', model_name)
+        clean_model = re.sub(r'\s+', '_', clean_model)
+        clean_model = clean_model.lower().strip('_')
+        
+        # If domain is still too long, truncate and add hash
+        if len(clean_domain) > 30:
+            # Use first 20 chars + hash of full domain
+            domain_hash = hashlib.md5(domain.encode()).hexdigest()[:8]
+            clean_domain = clean_domain[:20] + "_" + domain_hash
+        
+        # Create filename ensuring it's under filesystem limits
+        filename = f"{file_type}_{clean_domain}_{clean_model}_{timestamp}.json"
+        
+        # Final safety check - if still too long, use hash only
+        if len(filename) > 100:
+            domain_hash = hashlib.md5(domain.encode()).hexdigest()[:16]
+            filename = f"{file_type}_{domain_hash}_{timestamp}.json"
+        
+        return filename
+
     def save_evaluation_results(self, evaluation_summary: EvaluationSummary, filename: Optional[str] = None) -> str:
         """Save evaluation results to JSON file"""
         
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_domain = evaluation_summary.domain.lower().replace(' ', '_')
-            filename = f"evaluation_results_{safe_domain}_{self.model_to_test}_{timestamp}.json"
+            filename = self._create_safe_filename(evaluation_summary.domain, self.model_to_test, timestamp, "evaluation_results")
         
         try:
             # Convert to dictionary for JSON serialization
